@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jalasoft · Inducción y Micro aprendizaje</title>
+<meta name="description" content="Plataforma digital de inducción, evaluación de comprensión y micro aprendizaje continuo asistido por IA.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- ============================ LOGIN ============================ -->
+<section class="login" id="login">
+  <div class="login__brandside">
+    <div class="login__grid" aria-hidden="true"></div>
+    <div class="login__mark">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5V6a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v13"/><path d="M6 17h12"/><path d="M8 8h7"/>
+        </svg>
+      </div>
+      <span>Jalasoft<br><small style="font-weight:500;color:#8697B5">Quality Control Processes &amp; General Services</small></span>
+    </div>
+
+    <div class="login__headline">
+      <h1>La inducción deja de ser una carpeta de PDFs.</h1>
+      <p>Asignación automática de documentación, evaluaciones generadas con IA, refuerzo continuo y evidencia lista para auditoría.</p>
+    </div>
+
+    <div class="login__stats">
+      <div><b class="num">248</b><small>Colaboradores activos</small></div>
+      <div><b class="num">12</b><small>Documentos controlados</small></div>
+      <div><b class="num">89%</b><small>Cumplimiento de lectura</small></div>
+    </div>
+  </div>
+
+  <div class="login__panel">
+    <div class="login__box">
+      <h2>Ingresar a la plataforma</h2>
+      <p>Seleccione el perfil con el que desea recorrer la demostración.</p>
+
+      <span class="login__label">Perfil de acceso</span>
+      <div class="login__roles" id="roleList"></div>
+
+      <div class="field">
+        <span class="login__label">Correo corporativo</span>
+        <input id="loginMail" type="email" readonly>
+      </div>
+      <div class="field">
+        <span class="login__label">Contraseña</span>
+        <input type="password" value="••••••••••••" readonly>
+      </div>
+
+      <button class="btn btn--primary btn-block" id="loginBtn">Ingresar</button>
+      <p class="login__note">Entorno de demostración con datos simulados. No se transmite información real.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ APP ============================ -->
+<div class="app" id="app">
+
+  <aside class="rail" id="rail">
+    <div class="rail__brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5V6a2 2 0 0 1 2-2h11a1 1 0 0 1 1 1v13"/><path d="M6 17h12"/><path d="M8 8h7"/>
+        </svg>
+      </div>
+      <div><b>Jalasoft</b><small>Inducción &amp; Micro aprendizaje</small></div>
+    </div>
+    <nav class="rail__nav" id="nav"></nav>
+    <div class="rail__foot">
+      <button class="rail__user" id="userBtn">
+        <span class="av" id="userAv">MA</span>
+        <span style="min-width:0">
+          <b id="userName">Marcelo Antezana</b>
+          <small id="userRole">Administrador</small>
+        </span>
+      </button>
+    </div>
+  </aside>
+
+  <header class="top">
+    <button class="iconbtn" id="menuBtn" aria-label="Menú">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div class="top__crumb" id="crumb"></div>
+
+    <div class="top__search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input type="search" id="globalSearch" placeholder="Buscar colaborador, documento o campaña">
+    </div>
+
+    <button class="iconbtn" id="bellBtn" aria-label="Notificaciones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+      <span class="dot"></span>
+    </button>
+    <button class="iconbtn" id="logoutBtn" aria-label="Salir">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+    </button>
+  </header>
+
+  <main class="main" id="view"></main>
+</div>
+
+<!-- Popover de notificaciones -->
+<div class="pop" id="pop">
+  <div class="pop__head"><b>Notificaciones</b><button class="btn btn--ghost btn--sm" style="margin-left:auto" id="markAll">Marcar como leídas</button></div>
+  <div class="pop__list" id="popList"></div>
+</div>
+
+<!-- Modal -->
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+
+<!-- Drawer -->
+<div class="drawer" id="drawer"></div>
+
+<!-- Toasts -->
+<div class="toasts" id="toasts"></div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
