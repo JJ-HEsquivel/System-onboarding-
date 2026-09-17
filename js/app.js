@@ -1329,14 +1329,14 @@ function vColabDashboard() {
 function vMisDocs() {
   const ca = colaboradorActivo();
   if (ca.estadoAlta === 'pendiente_validacion') return vColabPendiente(ca);
-  const fila = (md) => { const d = doc(md.docId); const leido = md.estado === 'leido'; return `
+  const fila = (md) => { const d = doc(md.docId); const leido = md.estado === 'leido'; const esActualizacion = md.origen.startsWith('Actualización'); return `
     <div class="docitem">
       <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}">${svg(ICO.file)}</span>
       <span class="docitem__b">
         <b>${esc(d.titulo)}</b>
         <span class="docitem__m">
           <span>${d.codigo} · v${d.version}</span><span>${d.minutos} min de lectura</span>
-          <span>${esc(md.origen)}</span>
+          <span>${esActualizacion ? `<span class="badge badge--warn">${esc(md.origen)}</span>` : esc(md.origen)}</span>
           <span>${leido ? 'Confirmado el ' + md.confirmado : 'Vence ' + fechaLarga(md.vence)}</span>
         </span>
       </span>
@@ -1732,6 +1732,7 @@ function detalleDocumento(id) {
       </div>
     </div>
     <div class="modal__foot">
+      <button class="btn btn--ai" data-act-actualizar="${d.id}">${svg(ICO.refresh)} Actualizar documento</button>
       <button class="btn btn--ai" data-ia-doc="${d.id}">${svg(ICO.spark)} ${ev ? 'Regenerar' : 'Generar'} evaluación con IA</button>
       <button class="btn" data-leer="${d.id}">${svg(ICO.eye)} Ver documento</button>
       <span class="spacer"></span>
@@ -1742,6 +1743,7 @@ function detalleDocumento(id) {
   $$('[data-leer]').forEach(b => b.onclick = () => abrirLector(b.dataset.leer));
   $$('[data-ia-doc]').forEach(b => b.onclick = () => modalGenerarIA(false, b.dataset.iaDoc));
   $$('[data-ev-prev]').forEach(b => b.onclick = () => previsualizarEvaluacion(b.dataset.evPrev));
+  $$('[data-act-actualizar]').forEach(b => b.onclick = () => modalActualizarDocumento(b.dataset.actActualizar));
 }
 
 function bindModal() {
@@ -1815,6 +1817,187 @@ function mostrarPreguntas(docId) {
   };
 }
 
+/* ============================================================
+   ACTUALIZACIÓN DE DOCUMENTOS — flujo de 4 carriles del PPT:
+   Admin (clasifica el cambio y el grupo impactado)
+   → IA (analiza y genera preguntas sobre el cambio)
+   → Sistema (notifica y asigna la evaluación a los afectados)
+   → Colaborador (revisa, confirma lectura y rinde)
+   ============================================================ */
+let _actState = null; // datos que viajan entre los pasos del flujo, dentro de esta sesión
+
+const sugerirVersion = (v) => { const n = parseFloat(v) || 1; return (Math.round((n + 0.1) * 10) / 10).toFixed(1); };
+const afectadosPorGrupos = (grupos) => S.colaboradores.filter(c => c.estadoAlta === 'activo' && grupos.includes(c.area));
+
+/* Paso 1 · Admin: clasifica el cambio y elige a quién impacta */
+function modalActualizarDocumento(docId) {
+  const d = doc(docId);
+  const nueva = sugerirVersion(d.version);
+  _actState = { docId, version: nueva, nivel: 'mayor', resumen: '', grupos: [...d.areas] };
+
+  modal(modalHead('Actualizar documento', `${d.titulo} · versión actual v${d.version}`) + `
+    <div class="modal__body">
+      <div class="grid g-2" style="gap:0 16px">
+        <div class="field"><span class="login__label">Nueva versión</span><input id="up-version" value="${nueva}"></div>
+        <div class="field"><span class="login__label">Nivel del cambio</span>
+          <select id="up-nivel" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+            <option value="mayor">Mayor · requiere micro evaluación</option>
+            <option value="menor">Menor · solo aviso informativo</option>
+          </select></div>
+      </div>
+      <div class="field"><span class="login__label">Resumen del cambio</span>
+        <textarea id="up-resumen" rows="3" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px;font:inherit;resize:vertical"
+          placeholder="Ej. Se reduce a 2 horas el plazo para reportar la pérdida del segundo factor de autenticación."></textarea></div>
+
+      <div class="divider"></div>
+      <div class="sec__t">Grupos impactados por este cambio</div>
+      <div class="row wrap" style="gap:14px" id="up-grupos">
+        ${DB.areas.map(a => `<label class="row" style="gap:7px;font-size:13.2px">
+          <input type="checkbox" data-up-area="${a.id}" ${d.areas.includes(a.id) ? 'checked' : ''}> ${a.nombre}</label>`).join('')}
+      </div>
+      <p class="small muted mt-8" id="up-conteo"></p>
+    </div>
+    <div class="modal__foot">
+      <span class="small muted">La IA generará las preguntas a partir del resumen que escriba.</span>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" data-close>Cancelar</button>
+      <button class="btn btn--ai" id="up-analizar">${svg(ICO.spark)} Analizar con IA y generar preguntas</button>
+    </div>`, 'modal--wide');
+  bindModal();
+
+  const pintarConteo = () => {
+    const grupos = $$('[data-up-area]:checked').map(ch => ch.dataset.upArea);
+    $('#up-conteo').textContent = `Impacta a ${afectadosPorGrupos(grupos).length} colaboradores activos de los grupos seleccionados.`;
+  };
+  $$('[data-up-area]').forEach(ch => ch.onchange = pintarConteo);
+  pintarConteo();
+
+  $('#up-analizar').onclick = () => {
+    const resumen = $('#up-resumen').value.trim();
+    if (!resumen) { toast('Falta el resumen', 'Describa brevemente qué cambió en el documento.', 'warn'); return; }
+    _actState.version = $('#up-version').value.trim() || nueva;
+    _actState.nivel = $('#up-nivel').value;
+    _actState.resumen = resumen;
+    _actState.grupos = $$('[data-up-area]:checked').map(ch => ch.dataset.upArea);
+    if (!_actState.grupos.length) { toast('Seleccione al menos un grupo', 'No puede notificar una actualización sin audiencia.', 'warn'); return; }
+    iniciarAnalisisIA();
+  };
+}
+
+/* Paso 2 · IA: analiza el cambio y genera las preguntas (misma animación que la generación de evaluaciones) */
+function iniciarAnalisisIA() {
+  const d = doc(_actState.docId);
+  const pasos = ['Analizando las modificaciones del documento', 'Identificando los cambios relevantes para el colaborador', 'Generando preguntas relacionadas con el cambio'];
+
+  modal(modalHead('La IA está analizando el cambio', `${d.titulo} · v${d.version} → v${_actState.version}`) + `
+    <div class="modal__body">
+      <ul class="gensteps" id="genSteps">${pasos.map((p, i) => `<li data-i="${i}"><span class="dotmark"></span><span>${p}</span></li>`).join('')}</ul>
+      <div id="genOut" class="hide mt-24"></div>
+    </div>
+    <div class="modal__foot">
+      <span class="small muted" id="genNote">Este paso corresponde al carril "Inteligencia Artificial" del proceso.</span>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" data-close>Cancelar</button>
+      <button class="btn btn--primary hide" id="genPub">Publicar actualización y notificar</button>
+    </div>`, 'modal--wide');
+  bindModal();
+
+  let i = 0;
+  const lis = $$('#genSteps li');
+  const avanzar = () => {
+    if (i > 0) { lis[i - 1].innerHTML = `<span class="tick">${svg('<path d="M20 6 9 17l-5-5"/>')}</span><span>${pasos[i - 1]}</span>`; lis[i - 1].classList.add('done'); }
+    if (i < lis.length) { lis[i].innerHTML = `<span class="spin"></span><span>${pasos[i]}</span>`; lis[i].classList.add('on'); i++; setTimeout(avanzar, 720 + Math.random() * 380); }
+    else mostrarPreguntasActualizacion();
+  };
+  setTimeout(avanzar, 240);
+}
+
+/* Genera 3 preguntas de la micro evaluación a partir del resumen del cambio,
+   reforzando con una pregunta de la evaluación existente del documento si la hay. */
+function generarPreguntasActualizacion() {
+  const d = doc(_actState.docId);
+  const evExistente = DB.evaluaciones.find(e => e.docId === _actState.docId);
+  const otros = DB.documentos.filter(x => x.id !== d.id).map(x => x.cambios[0]?.detalle).filter(Boolean);
+
+  const p1 = {
+    q: `¿Cuál es el cambio principal que introduce la versión ${_actState.version} de "${d.titulo}"?`,
+    o: [_actState.resumen, ...otros.slice(0, 3)].sort(() => Math.random() - .5)
+  };
+  p1.r = p1.o.indexOf(_actState.resumen);
+  p1.exp = `La actualización a la versión ${_actState.version} corresponde a un cambio ${_actState.nivel}: ${_actState.resumen}`;
+
+  const p2 = evExistente ? { ...evExistente.preguntas[0] } : {
+    q: `¿A partir de cuándo rige la versión ${_actState.version} de este documento?`,
+    o: [`Desde el ${fechaLarga('2026-09-17')}`, 'Desde el próximo trimestre', 'Solo para contratos nuevos', 'No aplica retroactivamente'],
+    r: 0, exp: 'Toda actualización rige desde la fecha de publicación indicada en el historial de versiones del documento.'
+  };
+
+  const p3 = {
+    q: '¿Qué debe hacer si tiene dudas sobre esta actualización?',
+    o: ['Aplicar la versión anterior hasta aclararlo', 'Consultar al asistente documental o a su Manager', 'Ignorar el cambio si no afecta su tarea actual', 'Esperar a la siguiente micro evaluación'],
+    r: 1, exp: 'El asistente documental responde citando el documento y la versión vigente; ante dudas normativas, el Manager es el canal formal.'
+  };
+
+  return [p1, p2, p3];
+}
+
+function mostrarPreguntasActualizacion() {
+  const d = doc(_actState.docId);
+  _actState.preguntas = generarPreguntasActualizacion();
+  const out = $('#genOut'); if (!out) return;
+  out.classList.remove('hide');
+  $('#genNote').innerHTML = `<span class="ia__badge">${svg(ICO.spark)} 3 preguntas generadas · audiencia: ${afectadosPorGrupos(_actState.grupos).length} colaboradores</span>`;
+  $('#genPub').classList.remove('hide');
+
+  out.innerHTML = `<div class="sec__t">Micro evaluación propuesta para la actualización · revise antes de publicar</div>` +
+    _actState.preguntas.map((q, n) => `
+      <div class="qgen">
+        <div class="qgen__h"><span class="tag tag--ai">${n + 1}</span><b>${esc(q.q)}</b><span class="tag">confianza ${90 + n * 3}%</span></div>
+        <ol type="A">${q.o.map((o, oi) => `<li class="${oi === q.r ? 'ok' : ''}">${esc(o)}${oi === q.r ? ' · correcta' : ''}</li>`).join('')}</ol>
+        <p class="small muted" style="margin:9px 0 0"><b>Justificación:</b> ${esc(q.exp)}</p>
+      </div>`).join('');
+
+  $('#genPub').onclick = () => publicarActualizacion();
+}
+
+/* Paso 3 y 4 · Sistema notifica y asigna; el Colaborador la recibirá en su ruta */
+function publicarActualizacion() {
+  const { docId, version, nivel, resumen, grupos, preguntas } = _actState;
+  const d = doc(docId);
+  const versionAnterior = d.version;
+
+  d.version = version;
+  d.estado = 'actualizado';
+  d.actualizado = '2026-09-17';
+  d.areas = [...new Set([...d.areas, ...grupos])];
+  d.cambios.unshift({ v:version, fecha:'2026-09-17', nivel, detalle:resumen });
+
+  const ev = { id:'EV-UPD-' + Date.now(), docId, titulo:`Actualización · ${d.titulo} v${version}`,
+    minutos:5, minimo:80, intentos:3, generadaPor:'IA · Gemini Pro', fecha:'2026-09-17', preguntas };
+  DB.evaluaciones.push(ev);
+
+  const afectados = afectadosPorGrupos(grupos);
+  afectados.forEach(c => {
+    let md = c.documentosRuta.find(x => x.docId === docId);
+    if (md) { md.estado = 'pendiente'; md.confirmado = null; md.vence = sumarDias('2026-09-17', 3); md.origen = `Actualización v${version}`; }
+    else c.documentosRuta.push({ docId, estado:'pendiente', confirmado:null, vence:sumarDias('2026-09-17', 3), origen:`Actualización v${version}` });
+    if (nivel === 'mayor') c.evaluacionesRuta.push({ evId:ev.id, estado:'bloqueada', puntaje:null, fecha:null, intento:0 });
+    recalcularColaborador(c);
+  });
+
+  d.asignados = S.colaboradores.filter(c => c.documentosRuta.some(x => x.docId === docId)).length;
+  d.leidos = S.colaboradores.filter(c => c.documentosRuta.some(x => x.docId === docId && x.estado === 'leido')).length;
+
+  S.notifs.unshift({ id:'N-' + Date.now(), tipo:'actualizacion', titulo:'Documento actualizado',
+    detalle:`${d.titulo} pasó de v${versionAnterior} a v${version} (cambio ${nivel}). ${nivel === 'mayor' ? 'Se generó una micro evaluación obligatoria.' : 'Aviso informativo, sin evaluación.'} · ${resumen}`,
+    destino: grupos.map(areaNom).join(', '), fecha:'2026-09-17 · ahora', estado:'enviada' });
+
+  closeModal();
+  toast('Actualización publicada', `${afectados.length} colaboradores fueron notificados y deben ${nivel === 'mayor' ? 'releer y rendir la evaluación' : 'releer el documento'}.`, 'ia');
+  _actState = null;
+  render();
+}
+
 function previsualizarEvaluacion(id) {
   const ev = evalu(id);
   modal(modalHead(ev.titulo, `${ev.preguntas.length} preguntas · ${ev.minutos} minutos · mínimo ${ev.minimo}% · ${ev.generadaPor}`) + `
@@ -1886,12 +2069,14 @@ function confirmarLectura(docId) {
   if (md) { md.estado = 'leido'; md.confirmado = '2026-09-16 · ahora'; }
   const d = doc(docId); d.leidos = Math.min(d.asignados, d.leidos + 1);
 
-  // habilita la evaluación asociada
-  const ev = DB.evaluaciones.find(e => e.docId === docId);
-  if (ev) {
+  // habilita todas las evaluaciones asociadas a este documento
+  // (puede haber más de una: la original y la de una actualización posterior)
+  const evsDelDoc = DB.evaluaciones.filter(e => e.docId === docId);
+  let habilitoAlguna = false;
+  evsDelDoc.forEach(ev => {
     const me = ca.evaluacionesRuta.find(x => x.evId === ev.id);
-    if (me && me.estado === 'bloqueada') me.estado = 'pendiente';
-  }
+    if (me && me.estado === 'bloqueada') { me.estado = 'pendiente'; habilitoAlguna = true; }
+  });
 
   S.evidencias.unshift({ id:'EVD-' + (9100 + S.evidencias.length), colaborador:S.user.nombre,
     documento:`${d.titulo} v${d.version}`, tipo:'Confirmación de lectura', resultado:'Confirmada',
@@ -1899,7 +2084,7 @@ function confirmarLectura(docId) {
 
   recalcularColaborador(ca);
   closeModal();
-  toast('Lectura confirmada', `${d.titulo} quedó registrado como evidencia.${ev ? ' Su evaluación ya está disponible.' : ''}`);
+  toast('Lectura confirmada', `${d.titulo} quedó registrado como evidencia.${habilitoAlguna ? ' Su evaluación ya está disponible.' : ''}`);
   render();
 }
 
@@ -2249,9 +2434,15 @@ function enviarChat(texto) {
    21. Notificaciones (popover)
 ------------------------------------------------------------ */
 function pintarPop() {
-  const lista = S.user.rol === 'colaborador'
-    ? DB.avisosColaborador.map(a => ({ t:a.t, d:a.d, h:a.h }))
-    : S.notifs.slice(0, 8).map(n => ({ t:n.titulo, d:n.detalle, h:n.fecha }));
+  let lista;
+  if (S.user.rol === 'colaborador') {
+    const ca = colaboradorActivo();
+    const propias = S.notifs.filter(n =>
+      n.destino === 'Toda la organización' || n.destino.includes(ca.nombre) || n.destino.includes(areaNom(ca.area)));
+    lista = (propias.length ? propias.slice(0, 8).map(n => ({ t:n.titulo, d:n.detalle, h:n.fecha })) : DB.avisosColaborador.map(a => ({ t:a.t, d:a.d, h:a.h })));
+  } else {
+    lista = S.notifs.slice(0, 8).map(n => ({ t:n.titulo, d:n.detalle, h:n.fecha }));
+  }
   $('#popList').innerHTML = lista.map(n => `
     <div class="pop__i">
       <span class="feed__i brand">${svg(ICO.bell)}</span>
