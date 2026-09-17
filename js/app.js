@@ -55,10 +55,8 @@ const S = {
   user: null,
   rolSel: 'admin',
   view: 'dashboard',
-  misDocs: JSON.parse(JSON.stringify(DB.misDocumentos)),
-  misEvals: JSON.parse(JSON.stringify(DB.misEvaluaciones)),
-  pildoras: JSON.parse(JSON.stringify(DB.pildoras)),
   colaboradores: JSON.parse(JSON.stringify(DB.colaboradores)),
+  pildoras: JSON.parse(JSON.stringify(DB.pildoras)),
   evidencias: JSON.parse(JSON.stringify(DB.evidencias)),
   notifs: JSON.parse(JSON.stringify(DB.notificaciones)),
   campanas: JSON.parse(JSON.stringify(DB.campanas)),
@@ -72,6 +70,102 @@ const S = {
 const doc  = (id) => S.documentos.find(d => d.id === id);
 const evalu = (id) => DB.evaluaciones.find(e => e.id === id);
 const areaNom = (id) => (DB.areas.find(a => a.id === id) || {}).nombre || id;
+
+/* ------------------------------------------------------------
+   2.1 Rutas de documentos por área (base institucional del flujo:
+   diapositiva 6, etapa 1 — "Activar su ruta inicial de aprendizaje")
+------------------------------------------------------------ */
+const RUTA_BASE = ['DOC-010', 'DOC-002', 'DOC-003', 'DOC-001', 'DOC-007'];
+const RUTA_EXTRA_AREA = {
+  ENG: ['DOC-011', 'DOC-005', 'DOC-008', 'DOC-004'],
+  QA:  ['DOC-004', 'DOC-009', 'DOC-011', 'DOC-005'],
+  IT:  ['DOC-006', 'DOC-005'],
+  FIN: ['DOC-012', 'DOC-008'],
+  PMO: ['DOC-004', 'DOC-008'],
+  HR:  ['DOC-012']
+};
+const rutaBaseParaArea = (areaId) => {
+  const extra = (RUTA_EXTRA_AREA[areaId] || []).filter(id => !RUTA_BASE.includes(id));
+  return [...RUTA_BASE, ...extra];
+};
+
+const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const correoDe = (nombre) => nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, '.') + '@jalasoft.com';
+
+/* ------------------------------------------------------------
+   2.2 Recalcular fase, avance, promedio y pendientes de un
+   colaborador a partir de su ruta real (documentosRuta / evaluacionesRuta).
+   Se ejecuta cada vez que algo cambia, para que el panel del Admin,
+   el del Manager y el del propio colaborador muestren siempre el mismo número.
+------------------------------------------------------------ */
+function recalcularColaborador(c) {
+  const docs = c.documentosRuta || [];
+  const evals = c.evaluacionesRuta || [];
+  const docsLeidos = docs.filter(d => d.estado === 'leido').length;
+  const evalsAprobadas = evals.filter(e => e.estado === 'aprobada').length;
+  const conPuntaje = evals.filter(e => e.puntaje != null);
+
+  const total = docs.length + evals.length;
+  const hechos = docsLeidos + evalsAprobadas;
+  c.progreso = total ? pct(hechos, total) : 0;
+  c.promedio = conPuntaje.length ? Math.round(conPuntaje.reduce((a, e) => a + e.puntaje, 0) / conPuntaje.length) : 0;
+  c.pendientes = docs.filter(d => d.estado === 'pendiente').length + evals.filter(e => e.estado === 'pendiente').length;
+
+  if (c.estadoAlta === 'pendiente_validacion') { c.fase = 0; c.estado = 'por_iniciar'; return; }
+  if (!docs.length) { c.fase = 1; }
+  else if (docsLeidos < docs.length) { c.fase = 2; }
+  else if (evalsAprobadas < evals.length) { c.fase = 3; }
+  else { c.fase = 5; }
+
+  if (c.progreso >= 100) c.estado = 'completado';
+  else if (c.estado === 'atrasado') { /* se conserva el riesgo ya marcado en el dato semilla */ }
+  else if (c.progreso === 0) c.estado = 'por_iniciar';
+  else c.estado = 'en_curso';
+}
+
+/* Colaborador con el que se inició sesión ahora mismo */
+const colaboradorActivo = () => S.colaboradores.find(c => c.id === S.user.colaboradorId);
+
+/* ------------------------------------------------------------
+   2.3 Siembra inicial: le da a cada colaborador una ruta real.
+   Camila Rojas conserva el detalle curado de la demo; el resto de
+   los 24 colaboradores recibe una ruta sintetizada a partir de su
+   área y de su fase/avance semilla, para que el número que ve el
+   Admin y el que vería ese colaborador si iniciara sesión coincidan.
+------------------------------------------------------------ */
+function inicializarRutas() {
+  const camila = S.colaboradores.find(c => c.id === 'C-1001');
+  if (camila) {
+    camila.documentosRuta = JSON.parse(JSON.stringify(DB.misDocumentos));
+    camila.evaluacionesRuta = JSON.parse(JSON.stringify(DB.misEvaluaciones));
+    camila.estadoAlta = 'activo';
+  }
+  S.colaboradores.forEach(c => {
+    if (!c.estadoAlta) c.estadoAlta = 'activo';
+    if (!c.documentosRuta) {
+      const ids = rutaBaseParaArea(c.area);
+      const leidosN = Math.round((c.progreso / 100) * ids.length);
+      c.documentosRuta = ids.map((docId, i) => ({
+        docId,
+        estado: i < leidosN ? 'leido' : 'pendiente',
+        confirmado: i < leidosN ? sumarDias(c.ingreso, i + 1) + ' · registrado' : null,
+        vence: sumarDias(c.ingreso, 5 + i),
+        origen: RUTA_BASE.includes(docId) ? 'Ruta base' : 'Ruta de área'
+      }));
+      c.evaluacionesRuta = c.documentosRuta
+        .filter(d => DB.evaluaciones.some(e => e.docId === d.docId))
+        .map(d => {
+          const ev = DB.evaluaciones.find(e => e.docId === d.docId);
+          if (d.estado !== 'leido') return { evId: ev.id, estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 };
+          const aprobada = c.estado === 'completado' || c.promedio >= 70;
+          return aprobada
+            ? { evId: ev.id, estado: 'aprobada', puntaje: c.promedio || 80, fecha: sumarDias(c.ingreso, 6) + ' · registrado', intento: 1 }
+            : { evId: ev.id, estado: 'pendiente', puntaje: null, fecha: null, intento: 0 };
+        });
+    }
+    recalcularColaborador(c);
+  });
+}
 
 /* ------------------------------------------------------------
    2. Navegación por rol
@@ -95,7 +189,8 @@ const NAV = {
   manager: [
     { g: 'Mi equipo' },
     { id:'dashboard', t:'Panel del equipo', i:'home' },
-    { id:'equipo',    t:'Colaboradores',    i:'users', badge:() => 2, alert:true },
+    { id:'validar',   t:'Nuevos por validar', i:'alert', badge:() => S.colaboradores.filter(c => c.estadoAlta === 'pendiente_validacion' && c.manager === S.user.nombre).length, alert:true },
+    { id:'equipo',    t:'Colaboradores',    i:'users' },
     { id:'asignar',   t:'Asignar documentos', i:'file' },
     { id:'evaluaciones', t:'Resultados',    i:'check' },
     { g: 'Seguimiento' },
@@ -105,10 +200,10 @@ const NAV = {
   colaborador: [
     { g: 'Mi inducción' },
     { id:'dashboard', t:'Mi progreso',       i:'home' },
-    { id:'misdocs',   t:'Mis documentos',    i:'book', badge:() => S.misDocs.filter(d => d.estado === 'pendiente').length },
-    { id:'misevals',  t:'Mis evaluaciones',  i:'check', badge:() => S.misEvals.filter(e => e.estado === 'pendiente').length, alert:true },
+    { id:'misdocs',   t:'Mis documentos',    i:'book', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.documentosRuta.filter(d => d.estado === 'pendiente').length; } },
+    { id:'misevals',  t:'Mis evaluaciones',  i:'check', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.evaluacionesRuta.filter(e => e.estado === 'pendiente').length; }, alert:true },
     { g: 'Continuo' },
-    { id:'mimicro',   t:'Micro aprendizaje', i:'zap', badge:() => S.pildoras.filter(p => p.estado === 'pendiente').length },
+    { id:'mimicro',   t:'Micro aprendizaje', i:'zap', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : S.pildoras.filter(p => p.estado === 'pendiente').length; } },
     { id:'asistente', t:'Asistente documental', i:'chat' },
     { id:'certificados', t:'Mis constancias', i:'award' }
   ]
@@ -126,6 +221,7 @@ const TITULOS = {
   evidencias:['Evidencias de cumplimiento','Registro trazable para auditorías y requisitos normativos.'],
   config:['Configuración','Parámetros de plazos, escalamiento y generación de evaluaciones.'],
   equipo:['Mi equipo','Avance de cada colaborador a su cargo y casos que requieren atención.'],
+  validar:['Nuevos colaboradores por validar','Revise, ajuste y confirme la documentación antes de activar la ruta y avisar al colaborador.'],
   asignar:['Asignar documentos','Documentación específica adicional para los colaboradores de su equipo.'],
   misdocs:['Mis documentos','Lectura obligatoria asignada y su estado de confirmación.'],
   misevals:['Mis evaluaciones','Evaluaciones de comprensión pendientes y resultados obtenidos.'],
@@ -277,12 +373,33 @@ function pintarRoles() {
         <span class="rolecard__s">${desc[u.rol]}</span>
       </span>
     </button>`).join('');
-  $('#loginMail').value = DB.usuarios.find(u => u.rol === S.rolSel).correo;
   $$('.rolecard').forEach(b => b.onclick = () => { S.rolSel = b.dataset.rol; pintarRoles(); });
+
+  const wrap = $('#colabSelWrap');
+  if (S.rolSel === 'colaborador') {
+    wrap.classList.remove('hide');
+    const sel = $('#colabSel');
+    if (!S.colabSel) S.colabSel = 'C-1001';
+    sel.innerHTML = S.colaboradores.map(c => `
+      <option value="${c.id}" ${c.id === S.colabSel ? 'selected' : ''}>
+        ${esc(c.nombre)} · ${areaNom(c.area)}${c.estadoAlta === 'pendiente_validacion' ? ' (pendiente de validación)' : ''}
+      </option>`).join('');
+    sel.onchange = () => { S.colabSel = sel.value; pintarRoles(); };
+    const elegido = S.colaboradores.find(c => c.id === S.colabSel);
+    $('#loginMail').value = elegido ? correoDe(elegido.nombre) : DB.usuarios.find(u => u.rol === 'colaborador').correo;
+  } else {
+    wrap.classList.add('hide');
+    $('#loginMail').value = DB.usuarios.find(u => u.rol === S.rolSel).correo;
+  }
 }
 
 function entrar() {
-  S.user = DB.usuarios.find(u => u.rol === S.rolSel);
+  if (S.rolSel === 'colaborador') {
+    const c = S.colaboradores.find(x => x.id === S.colabSel) || S.colaboradores.find(x => x.id === 'C-1001');
+    S.user = { rol:'colaborador', nombre:c.nombre, cargo:c.cargo, area:c.area, correo:correoDe(c.nombre), colaboradorId:c.id };
+  } else {
+    S.user = DB.usuarios.find(u => u.rol === S.rolSel);
+  }
   S.view = 'dashboard';
   $('#login').style.display = 'none';
   $('#app').classList.add('is-on');
@@ -927,6 +1044,73 @@ function vManagerDashboard() {
   </div>`;
 }
 
+/* ------------------------------------------------------------
+   Etapa 2 del flujo (diapositiva 6): "Configuración de la ruta".
+   El Manager revisa lo que el Admin propuso, puede sumar o quitar
+   documentos, y recién al confirmar el colaborador queda activo.
+------------------------------------------------------------ */
+function vValidarLista() {
+  const pend = S.colaboradores.filter(c => c.estadoAlta === 'pendiente_validacion' && c.manager === S.user.nombre);
+  return head('validar') + (pend.length ? pend.map(c => `
+    <section class="card mt-16">
+      <div class="card__head">
+        ${persona(c.nombre, c.cargo)}
+        <div class="right"><span class="badge badge--warn">Pendiente de validación</span></div>
+      </div>
+      <div class="card__body">
+        <dl class="kv">
+          <dt>Área</dt><dd>${areaNom(c.area)}</dd>
+          <dt>Fecha de ingreso</dt><dd class="num">${fechaLarga(c.ingreso)}</dd>
+          <dt>Registrado por</dt><dd>${esc(c.registradoPor || 'Administración')}</dd>
+        </dl>
+        <div class="divider"></div>
+        <div class="sec__t">Documentación propuesta según el área · destilde para quitar, tilde para sumar</div>
+        <div class="doclist" id="chk-${c.id}">
+          ${S.documentos.filter(d => d.areas.includes(c.area)).map(d => `
+            <label class="docitem" style="cursor:pointer">
+              <input type="checkbox" data-val-doc="${d.id}" ${c.documentosRuta.some(x => x.docId === d.id) ? 'checked' : ''} style="width:16px;height:16px;flex:none">
+              <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}">${svg(ICO.file)}</span>
+              <span class="docitem__b"><b>${esc(d.titulo)}</b>
+                <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span><span>${esc(d.categoria)}</span></span></span>
+              <span class="docitem__a"><span class="badge badge--${d.criticidad === 'alta' ? 'danger' : 'muted'}">${d.criticidad}</span></span>
+            </label>`).join('')}
+        </div>
+      </div>
+      <div class="card__foot">
+        <button class="btn btn--primary" data-validar="${c.id}">${svg(ICO.check)} Confirmar y activar ruta</button>
+        <span class="small muted">Al confirmar, el sistema envía el correo de bienvenida y el colaborador puede empezar a leer.</span>
+      </div>
+    </section>`).join('')
+    : `<div class="empty">${svg(ICO.check)}<b>No tiene colaboradores pendientes de validación</b>Los nuevos registros que le asigne el Admin aparecerán aquí antes de activarse.</div>`);
+}
+
+function validarColaborador(id) {
+  const c = S.colaboradores.find(x => x.id === id);
+  const checks = $$(`#chk-${id} input:checked`);
+  if (!checks.length) { toast('Seleccione al menos un documento', 'No puede activar una ruta sin documentación.', 'warn'); return; }
+
+  c.documentosRuta = checks.map((ch, i) => ({
+    docId: ch.dataset.valDoc, estado:'pendiente', confirmado:null,
+    vence: sumarDias(c.ingreso, 5 + Math.floor(i / 2)),
+    origen: RUTA_BASE.includes(ch.dataset.valDoc) ? 'Ruta base' : 'Agregado por Manager'
+  }));
+  c.evaluacionesRuta = c.documentosRuta
+    .filter(d => DB.evaluaciones.some(e => e.docId === d.docId))
+    .map(d => ({ evId: DB.evaluaciones.find(e => e.docId === d.docId).id, estado:'bloqueada', puntaje:null, fecha:null, intento:0 }));
+
+  c.estadoAlta = 'activo';
+  c.validadoPor = S.user.nombre;
+  c.fechaValidacion = '2026-09-16 · ahora';
+  recalcularColaborador(c);
+
+  S.notifs.unshift({ id:'N-' + Date.now(), tipo:'bienvenida', titulo:'Correo de bienvenida',
+    detalle:`Ruta activada para ${c.nombre} tras la validación de ${S.user.nombre}. ${c.documentosRuta.length} documentos asignados.`,
+    destino:c.nombre, fecha:'2026-09-16 · ahora', estado:'enviada' });
+
+  toast('Colaborador activado', `${c.nombre} ya puede ingresar y ver su documentación.`, 'ia');
+  render();
+}
+
 function vEquipo() {
   const eq = equipoDe();
   return head('equipo', `<button class="btn btn--primary" data-act="asignar-doc">${svg(ICO.plus)} Asignar documento</button>`) + `
@@ -1023,16 +1207,47 @@ function vResultadosEquipo() {
    9. Vistas · COLABORADOR
 ------------------------------------------------------------ */
 function miProgreso() {
-  const total = S.misDocs.length + S.misEvals.length;
-  const hechos = S.misDocs.filter(d => d.estado === 'leido').length + S.misEvals.filter(e => e.estado === 'aprobada').length;
-  return pct(hechos, total);
+  const ca = colaboradorActivo();
+  return ca.progreso;
+}
+
+/* Pantalla que ve un colaborador recién registrado, mientras su Manager
+   no confirme la documentación (etapa 2 del flujo del documento).
+   Se reutiliza en todas las secciones que dependen de la ruta. */
+function vColabPendiente(ca) {
+  return `<div class="page__head">
+    <div><h1>Hola, ${esc(S.user.nombre.split(' ')[0])}</h1>
+      <p>Su cuenta se creó correctamente. Antes de que pueda ver su documentación, su Manager <b>${esc(ca.manager)}</b> tiene que revisarla y confirmarla.</p></div></div>
+
+  <section class="card">
+    <div class="card__body">
+      <div class="empty">
+        ${svg(ICO.clock)}
+        <b>Su ruta de inducción todavía no está activa</b>
+        En cuanto ${esc(ca.manager)} confirme los documentos, el sistema le enviará un correo de bienvenida y podrá empezar a leer aquí mismo.
+      </div>
+      <div class="divider"></div>
+      <div class="sec__t">Documentación propuesta (sujeta a la revisión del Manager)</div>
+      <div class="doclist">
+        ${ca.documentosRuta.map(md => { const d = doc(md.docId); return `
+          <div class="docitem" style="opacity:.55">
+            <span class="docitem__ic">${svg(ICO.file)}</span>
+            <span class="docitem__b"><b>${esc(d.titulo)}</b><span class="docitem__m"><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
+            <span class="docitem__a"><span class="badge badge--muted">En validación</span></span>
+          </div>`; }).join('')}
+      </div>
+    </div>
+  </section>`;
 }
 
 function vColabDashboard() {
-  const p = miProgreso();
-  const pend = S.misDocs.filter(d => d.estado === 'pendiente').length;
-  const pendEv = S.misEvals.filter(e => e.estado === 'pendiente').length;
-  const fase = p >= 80 ? 4 : p >= 55 ? 3 : 2;
+  const ca = colaboradorActivo();
+  if (ca.estadoAlta === 'pendiente_validacion') return vColabPendiente(ca);
+
+  const p = ca.progreso;
+  const pend = ca.documentosRuta.filter(d => d.estado === 'pendiente').length;
+  const pendEv = ca.evaluacionesRuta.filter(e => e.estado === 'pendiente').length;
+  const fase = ca.fase;
 
   return `<div class="page__head">
     <div><h1>Hola, ${esc(S.user.nombre.split(' ')[0])}</h1>
@@ -1055,14 +1270,14 @@ function vColabDashboard() {
           ${ring(p, 104, 'de la ruta')}
           <div style="flex:1;min-width:220px">
             <div class="gap" style="grid-template-columns:1fr 130px 44px;border:0">
-              <div><b>Lecturas confirmadas</b><small>${S.misDocs.filter(d => d.estado === 'leido').length} de ${S.misDocs.length} documentos</small></div>
-              <div class="gap__bar"><i style="width:${pct(S.misDocs.filter(d => d.estado === 'leido').length, S.misDocs.length)}%;background:#1F53CE"></i></div>
-              <div class="gap__v">${pct(S.misDocs.filter(d => d.estado === 'leido').length, S.misDocs.length)}%</div>
+              <div><b>Lecturas confirmadas</b><small>${ca.documentosRuta.filter(d => d.estado === 'leido').length} de ${ca.documentosRuta.length} documentos</small></div>
+              <div class="gap__bar"><i style="width:${pct(ca.documentosRuta.filter(d => d.estado === 'leido').length, ca.documentosRuta.length)}%;background:#1F53CE"></i></div>
+              <div class="gap__v">${pct(ca.documentosRuta.filter(d => d.estado === 'leido').length, ca.documentosRuta.length)}%</div>
             </div>
             <div class="gap" style="grid-template-columns:1fr 130px 44px;border:0">
-              <div><b>Evaluaciones aprobadas</b><small>${S.misEvals.filter(e => e.estado === 'aprobada').length} de ${S.misEvals.length} evaluaciones</small></div>
-              <div class="gap__bar"><i style="width:${pct(S.misEvals.filter(e => e.estado === 'aprobada').length, S.misEvals.length)}%;background:#0E7A56"></i></div>
-              <div class="gap__v">${pct(S.misEvals.filter(e => e.estado === 'aprobada').length, S.misEvals.length)}%</div>
+              <div><b>Evaluaciones aprobadas</b><small>${ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').length} de ${ca.evaluacionesRuta.length} evaluaciones</small></div>
+              <div class="gap__bar"><i style="width:${pct(ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').length, ca.evaluacionesRuta.length)}%;background:#0E7A56"></i></div>
+              <div class="gap__v">${pct(ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').length, ca.evaluacionesRuta.length)}%</div>
             </div>
             <div class="gap" style="grid-template-columns:1fr 130px 44px;border:0">
               <div><b>Micro aprendizaje</b><small>${S.pildoras.filter(p2 => p2.estado === 'completada').length} de ${S.pildoras.length} píldoras respondidas</small></div>
@@ -1079,14 +1294,14 @@ function vColabDashboard() {
         <div class="card__head"><div><h3>Pendiente ahora</h3><p>Ordenado por fecha de vencimiento</p></div></div>
         <div class="card__body">
           <div class="doclist">
-            ${S.misDocs.filter(d => d.estado === 'pendiente').slice(0, 3).map(md => { const d = doc(md.docId); return `
+            ${ca.documentosRuta.filter(d => d.estado === 'pendiente').slice(0, 3).map(md => { const d = doc(md.docId); return `
               <div class="docitem" style="padding:11px 12px">
                 <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:32px;height:36px">${svg(ICO.file)}</span>
                 <span class="docitem__b"><b style="font-size:13.3px">${esc(d.titulo)}</b>
                   <span class="docitem__m"><span>${d.minutos} min</span><span>Vence ${fechaLarga(md.vence)}</span></span></span>
                 <span class="docitem__a"><button class="btn btn--sm btn--primary" data-leer="${d.id}">Leer</button></span>
               </div>`; }).join('')}
-            ${S.misEvals.filter(e => e.estado === 'pendiente').slice(0, 2).map(me => { const ev = evalu(me.evId); return `
+            ${ca.evaluacionesRuta.filter(e => e.estado === 'pendiente').slice(0, 2).map(me => { const ev = evalu(me.evId); return `
               <div class="docitem" style="padding:11px 12px">
                 <span class="docitem__ic" style="width:32px;height:36px;background:var(--brand-050);border-color:#D6E1FB;color:var(--brand)">${svg(ICO.check)}</span>
                 <span class="docitem__b"><b style="font-size:13.3px">${esc(ev.titulo.replace('Evaluación · ', ''))}</b>
@@ -1112,6 +1327,8 @@ function vColabDashboard() {
 }
 
 function vMisDocs() {
+  const ca = colaboradorActivo();
+  if (ca.estadoAlta === 'pendiente_validacion') return vColabPendiente(ca);
   const fila = (md) => { const d = doc(md.docId); const leido = md.estado === 'leido'; return `
     <div class="docitem">
       <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}">${svg(ICO.file)}</span>
@@ -1129,8 +1346,8 @@ function vMisDocs() {
       </span>
     </div>`; };
 
-  const pendientes = S.misDocs.filter(d => d.estado === 'pendiente');
-  const leidos = S.misDocs.filter(d => d.estado === 'leido');
+  const pendientes = ca.documentosRuta.filter(d => d.estado === 'pendiente');
+  const leidos = ca.documentosRuta.filter(d => d.estado === 'leido');
 
   return head('misdocs') + `
   <section class="card">
@@ -1147,11 +1364,13 @@ function vMisDocs() {
 }
 
 function vMisEvals() {
+  const ca = colaboradorActivo();
+  if (ca.estadoAlta === 'pendiente_validacion') return vColabPendiente(ca);
   const estadoBadge = { aprobada:'<span class="badge badge--ok">Aprobada</span>', pendiente:'<span class="badge badge--warn">Pendiente</span>', reprobada:'<span class="badge badge--danger">Reprobada</span>', bloqueada:'<span class="badge badge--muted">Bloqueada</span>' };
   return head('misevals') + `
   <div class="grid g-3">
-    ${kpi('Evaluaciones asignadas', S.misEvals.length, 'Generadas desde sus documentos', '', '')}
-    ${kpi('Puntaje promedio', (() => { const a = S.misEvals.filter(e => e.puntaje); return a.length ? Math.round(a.reduce((x, e) => x + e.puntaje, 0) / a.length) + '%' : '—'; })(), 'Mínimo de aprobación 80%', '', '')}
+    ${kpi('Evaluaciones asignadas', ca.evaluacionesRuta.length, 'Generadas desde sus documentos', '', '')}
+    ${kpi('Puntaje promedio', (() => { const a = ca.evaluacionesRuta.filter(e => e.puntaje); return a.length ? Math.round(a.reduce((x, e) => x + e.puntaje, 0) / a.length) + '%' : '—'; })(), 'Mínimo de aprobación 80%', '', '')}
     ${kpi('Intentos disponibles', '3', 'Por cada evaluación', '', '')}
   </div>
 
@@ -1159,7 +1378,7 @@ function vMisEvals() {
     <div class="card__head"><div><h3>Mis evaluaciones</h3><p>Las evaluaciones se habilitan al confirmar la lectura del documento correspondiente</p></div></div>
     <div class="card__body">
       <div class="doclist">
-        ${S.misEvals.map(me => { const ev = evalu(me.evId); const d = doc(ev.docId); return `
+        ${ca.evaluacionesRuta.map(me => { const ev = evalu(me.evId); const d = doc(ev.docId); return `
           <div class="docitem">
             <span class="docitem__ic" style="background:${me.estado === 'aprobada' ? 'var(--ok-050)' : 'var(--brand-050)'};border-color:#DCE6F8;color:${me.estado === 'aprobada' ? 'var(--ok)' : 'var(--brand)'}">${svg(ICO.check)}</span>
             <span class="docitem__b"><b>${esc(ev.titulo.replace('Evaluación · ', ''))}</b>
@@ -1179,6 +1398,8 @@ function vMisEvals() {
 }
 
 function vMiMicro() {
+  const ca = colaboradorActivo();
+  if (ca.estadoAlta === 'pendiente_validacion') return vColabPendiente(ca);
   const pend = S.pildoras.filter(p => p.estado === 'pendiente');
   const hechas = S.pildoras.filter(p => p.estado === 'completada');
   return head('mimicro') + `
@@ -1245,13 +1466,14 @@ const msgHTML = (m) => `
   </div>`;
 
 function vCertificados() {
-  const items = S.misDocs.filter(d => d.estado === 'leido').map(md => ({ t: doc(md.docId).titulo, v: doc(md.docId).version, f: md.confirmado, tipo: 'Confirmación de lectura' }))
-    .concat(S.misEvals.filter(e => e.estado === 'aprobada').map(me => ({ t: evalu(me.evId).titulo.replace('Evaluación · ', ''), v: doc(evalu(me.evId).docId).version, f: me.fecha, tipo: `Evaluación aprobada · ${me.puntaje}%` })));
+  const ca = colaboradorActivo();
+  const items = ca.documentosRuta.filter(d => d.estado === 'leido').map(md => ({ t: doc(md.docId).titulo, v: doc(md.docId).version, f: md.confirmado, tipo: 'Confirmación de lectura' }))
+    .concat(ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').map(me => ({ t: evalu(me.evId).titulo.replace('Evaluación · ', ''), v: doc(evalu(me.evId).docId).version, f: me.fecha, tipo: `Evaluación aprobada · ${me.puntaje}%` })));
   return head('certificados', `<button class="btn" data-act="export">${svg(ICO.down)} Descargar constancia</button>`) + `
   <div class="grid g-3">
     ${kpi('Registros de cumplimiento', items.length, 'Con sello de tiempo verificable', '', '')}
-    ${kpi('Documentos vigentes al día', S.misDocs.filter(d => d.estado === 'leido').length + ' de ' + S.misDocs.length, 'Lectura confirmada', '', '')}
-    ${kpi('Evaluaciones aprobadas', S.misEvals.filter(e => e.estado === 'aprobada').length, 'Mínimo exigido 80%', '', '')}
+    ${kpi('Documentos vigentes al día', ca.documentosRuta.filter(d => d.estado === 'leido').length + ' de ' + ca.documentosRuta.length, 'Lectura confirmada', '', '')}
+    ${kpi('Evaluaciones aprobadas', ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').length, 'Mínimo exigido 80%', '', '')}
   </div>
   <section class="card mt-16">
     <div class="card__head"><div><h3>Historial de cumplimiento</h3><p>Esta información alimenta la evidencia de auditoría de la organización</p></div></div>
@@ -1274,7 +1496,7 @@ const VISTAS = {
   admin: { dashboard:vAdminDashboard, colaboradores:vColaboradores, documentos:vDocumentos, rutas:vRutas,
            evaluaciones:vEvaluaciones, micro:vMicro, analitica:vAnalitica, notificaciones:vNotificaciones,
            evidencias:vEvidencias, config:vConfig },
-  manager: { dashboard:vManagerDashboard, equipo:vEquipo, asignar:vAsignar, evaluaciones:vResultadosEquipo,
+  manager: { dashboard:vManagerDashboard, validar:vValidarLista, equipo:vEquipo, asignar:vAsignar, evaluaciones:vResultadosEquipo,
              notificaciones:vNotificaciones, analitica:vAnalitica },
   colaborador: { dashboard:vColabDashboard, misdocs:vMisDocs, misevals:vMisEvals, mimicro:vMiMicro,
                  asistente:vAsistente, certificados:vCertificados }
@@ -1340,6 +1562,9 @@ function bindVista() {
 
   // Acciones genéricas
   $$('[data-act]').forEach(b => b.onclick = () => accion(b.dataset.act, b));
+
+  // Validación de colaboradores nuevos (Manager)
+  $$('[data-validar]').forEach(b => b.onclick = () => validarColaborador(b.dataset.validar));
 
   // Chat
   const form = $('#chatForm');
@@ -1611,7 +1836,8 @@ function previsualizarEvaluacion(id) {
 ------------------------------------------------------------ */
 function abrirLector(docId) {
   const d = doc(docId);
-  const md = S.misDocs.find(m => m.docId === docId);
+  const ca = S.user.rol === 'colaborador' ? colaboradorActivo() : null;
+  const md = ca ? ca.documentosRuta.find(m => m.docId === docId) : null;
   const yaLeido = md && md.estado === 'leido';
 
   modal(modalHead(d.titulo, `${d.codigo} · versión ${d.version} · actualizado el ${fechaLarga(d.actualizado)}`) + `
@@ -1655,14 +1881,15 @@ function abrirLector(docId) {
 }
 
 function confirmarLectura(docId) {
-  const md = S.misDocs.find(m => m.docId === docId);
+  const ca = colaboradorActivo();
+  const md = ca.documentosRuta.find(m => m.docId === docId);
   if (md) { md.estado = 'leido'; md.confirmado = '2026-09-16 · ahora'; }
   const d = doc(docId); d.leidos = Math.min(d.asignados, d.leidos + 1);
 
   // habilita la evaluación asociada
   const ev = DB.evaluaciones.find(e => e.docId === docId);
   if (ev) {
-    const me = S.misEvals.find(x => x.evId === ev.id);
+    const me = ca.evaluacionesRuta.find(x => x.evId === ev.id);
     if (me && me.estado === 'bloqueada') me.estado = 'pendiente';
   }
 
@@ -1670,6 +1897,7 @@ function confirmarLectura(docId) {
     documento:`${d.titulo} v${d.version}`, tipo:'Confirmación de lectura', resultado:'Confirmada',
     fecha:'2026-09-16 · ahora', hash:Math.random().toString(16).slice(2, 6) + '...' + Math.random().toString(16).slice(2, 6) });
 
+  recalcularColaborador(ca);
   closeModal();
   toast('Lectura confirmada', `${d.titulo} quedó registrado como evidencia.${ev ? ' Su evaluación ya está disponible.' : ''}`);
   render();
@@ -1680,7 +1908,8 @@ function confirmarLectura(docId) {
 ------------------------------------------------------------ */
 function abrirQuiz(evId) {
   const ev = evalu(evId);
-  const me = S.misEvals.find(e => e.evId === evId);
+  const ca = colaboradorActivo();
+  const me = ca.evaluacionesRuta.find(e => e.evId === evId);
   if (me && me.estado === 'aprobada') { resultadoPrevio(ev, me); return; }
 
   S.quiz = { ev, i: 0, resp: Array(ev.preguntas.length).fill(null), seg: ev.minutos * 60, timer: null, revelada: false };
@@ -1741,12 +1970,14 @@ function pintarQuiz() {
 
 function finalizarQuiz(porTiempo = false) {
   const q = S.quiz, ev = q.ev;
+  const ca = colaboradorActivo();
   const ok = q.resp.filter((r, i) => r === ev.preguntas[i].r).length;
   const score = Math.round(ok / ev.preguntas.length * 100);
   const aprobado = score >= ev.minimo;
 
-  const me = S.misEvals.find(e => e.evId === ev.id);
+  const me = ca.evaluacionesRuta.find(e => e.evId === ev.id);
   if (me) { me.estado = aprobado ? 'aprobada' : 'reprobada'; me.puntaje = score; me.fecha = '2026-09-16 · ahora'; me.intento++; }
+  recalcularColaborador(ca);
 
   S.evidencias.unshift({ id:'EVD-' + (9100 + S.evidencias.length), colaborador:S.user.nombre,
     documento:`${doc(ev.docId).titulo} v${doc(ev.docId).version}`,
@@ -1844,43 +2075,67 @@ function abrirPildora(id) {
 const campoF = (l, ph, val = '') => `<div class="field"><span class="login__label">${l}</span><input placeholder="${ph}" value="${val}"></div>`;
 
 function modalNuevoColaborador() {
-  modal(modalHead('Registrar colaborador', 'El sistema activa la ruta inicial y envía el correo de bienvenida al guardar') + `
+  modal(modalHead('Registrar colaborador', 'Etapa 1 del flujo: el Admin registra los datos. El correo de bienvenida se envía recién cuando el Manager valide la documentación.') + `
     <div class="modal__body">
       <div class="grid g-2" style="gap:0 16px">
-        ${campoF('Nombre completo', 'Ej. Ana Paredes')}
-        ${campoF('Correo corporativo', 'nombre.apellido@jalasoft.com')}
-        ${campoF('Cargo', 'Ej. QA Engineer')}
+        <div class="field"><span class="login__label">Nombre completo</span><input id="nc-nombre" placeholder="Ej. Ana Paredes"></div>
+        <div class="field"><span class="login__label">Correo corporativo</span><input id="nc-correo" placeholder="Se genera automáticamente" readonly></div>
+        <div class="field"><span class="login__label">Cargo</span><input id="nc-cargo" placeholder="Ej. QA Engineer"></div>
         <div class="field"><span class="login__label">Área</span>
-          <select style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">${DB.areas.map(a => `<option>${a.nombre}</option>`).join('')}</select></div>
+          <select id="nc-area" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+            ${DB.areas.map(a => `<option value="${a.id}">${a.nombre}</option>`).join('')}</select></div>
         <div class="field"><span class="login__label">Manager responsable</span>
-          <select style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+          <select id="nc-manager" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
             ${['Iván Suárez','Gabriela Rocha','Sofía Terceros','Ruth Peñaranda','Lorena Vargas','Patricia Nogales'].map(m => `<option>${m}</option>`).join('')}</select></div>
-        ${campoF('Fecha de ingreso', '', '2026-09-21')}
+        <div class="field"><span class="login__label">Fecha de ingreso</span><input id="nc-ingreso" value="2026-09-21"></div>
       </div>
       <div class="divider"></div>
-      <div class="sec__t">Ruta que se asignará automáticamente</div>
-      <div class="doclist">
-        ${['DOC-010','DOC-002','DOC-003','DOC-001','DOC-007'].map(id => { const d = doc(id); return `
-          <div class="docitem" style="padding:9px 12px">
-            <span class="docitem__ic" style="width:28px;height:32px">${svg(ICO.file)}</span>
-            <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
-              <span class="docitem__m"><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
-            <span class="docitem__a"><span class="badge badge--info">Obligatorio</span></span></div>`; }).join('')}
-      </div>
-      <label class="row mt-16" style="gap:8px;font-size:13.2px"><input type="checkbox" checked> Enviar correo de bienvenida y activar la fase 1 de inmediato</label>
+      <div class="sec__t">Ruta propuesta según el área (el Manager la revisará antes de activarla)</div>
+      <div class="doclist" id="nc-ruta"></div>
+      <div class="explain mt-16">${svg(ICO.alert)} El colaborador <b>no verá esta documentación</b> hasta que <b id="nc-mgr-preview">su Manager</b> la confirme en "Nuevos por validar".</div>
     </div>
     <div class="modal__foot"><span class="spacer"></span>
       <button class="btn btn--ghost" data-close>Cancelar</button>
-      <button class="btn btn--primary" id="saveCol">Registrar y activar ruta</button></div>`, 'modal--wide');
+      <button class="btn btn--primary" id="saveCol">Registrar (queda pendiente de validación)</button></div>`, 'modal--wide');
   bindModal();
+
+  const pintarRutaPreview = () => {
+    const area = $('#nc-area').value;
+    $('#nc-ruta').innerHTML = rutaBaseParaArea(area).map(id => { const d = doc(id); return `
+      <div class="docitem" style="padding:9px 12px">
+        <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:28px;height:32px">${svg(ICO.file)}</span>
+        <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
+          <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
+        <span class="docitem__a"><span class="badge badge--info">Propuesto</span></span></div>`; }).join('');
+    $('#nc-mgr-preview').textContent = $('#nc-manager').value;
+  };
+  $('#nc-area').onchange = pintarRutaPreview;
+  $('#nc-manager').onchange = pintarRutaPreview;
+  $('#nc-nombre').oninput = () => { $('#nc-correo').value = $('#nc-nombre').value.trim() ? correoDe($('#nc-nombre').value.trim()) : ''; };
+  pintarRutaPreview();
+
   $('#saveCol').onclick = () => {
-    const inputs = $$('.modal__body input');
-    const nombre = inputs[0].value.trim() || 'Ana Paredes';
-    S.colaboradores.unshift({ id:'C-' + (1025 + S.colaboradores.length), nombre, cargo:inputs[2].value.trim() || 'QA Engineer',
-      area:'QA', manager:'Gabriela Rocha', ingreso:'2026-09-21', fase:1, progreso:4, estado:'por_iniciar',
-      promedio:0, pendientes:5, ultimaActividad:'Sin actividad', riesgo:'bajo' });
+    const nombre = $('#nc-nombre').value.trim() || 'Ana Paredes';
+    const area = $('#nc-area').value;
+    const manager = $('#nc-manager').value;
+    const cargo = $('#nc-cargo').value.trim() || 'Colaborador';
+    const ingreso = $('#nc-ingreso').value.trim() || '2026-09-21';
+    const id = 'C-' + (1100 + S.colaboradores.length);
+
+    S.colaboradores.unshift({
+      id, nombre, cargo, area, manager, ingreso, registradoPor: S.user.nombre,
+      estadoAlta:'pendiente_validacion', fase:0, progreso:0, estado:'por_iniciar',
+      promedio:0, pendientes:0, ultimaActividad:'Sin actividad', riesgo:'bajo',
+      documentosRuta: rutaBaseParaArea(area).map(docId => ({ docId, estado:'pendiente', confirmado:null, vence:null, origen:'Propuesto' })),
+      evaluacionesRuta: []
+    });
+
+    S.notifs.unshift({ id:'N-' + Date.now(), tipo:'validacion', titulo:'Nuevo colaborador por validar',
+      detalle:`${nombre} fue registrado por ${S.user.nombre} y espera la validación de su documentación.`,
+      destino:manager, fecha:'2026-09-16 · ahora', estado:'enviada' });
+
     closeModal();
-    toast('Colaborador registrado', `${nombre} recibió el correo de bienvenida y su ruta está activa.`);
+    toast('Colaborador registrado', `${nombre} queda pendiente de validación de ${manager}. Todavía no puede ver su documentación.`, 'warn');
     render();
   };
 }
@@ -2007,6 +2262,7 @@ function pintarPop() {
 /* ------------------------------------------------------------
    22. Arranque
 ------------------------------------------------------------ */
+inicializarRutas();
 pintarRoles();
 $('#loginBtn').onclick = entrar;
 $('#logoutBtn').onclick = salir;
