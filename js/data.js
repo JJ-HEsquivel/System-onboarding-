@@ -400,7 +400,7 @@ const DB = (() => {
     ]
   };
 
-  /* ---------- Sugerencias de la IA ---------- */
+  /* ---------- Sugerencias de la IA JJ ---------- */
   const sugerenciasIA = [
     { t: 'Reforzar “Información que no puede compartirse”', d: 'El 47% de los errores de la Política de Uso de IA se concentra en la sección 2. Sugerimos una campaña semanal de 3 píldoras dirigida a Engineering y QA.', impacto: 'alto', accion: 'Crear campaña' },
     { t: 'Reescribir el criterio de liberación', d: 'La pregunta sobre defectos de severidad alta tiene 41% de error. La redacción de la sección 2 admite dos lecturas; se sugiere precisarla.', impacto: 'alto', accion: 'Notificar a Gabriela Rocha' },
