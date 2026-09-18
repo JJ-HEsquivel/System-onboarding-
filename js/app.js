@@ -86,6 +86,10 @@ const RUTA_EXTRA_AREA = {
   HR:  ['DOC-012']
 };
 const rutaBaseParaArea = (areaId) => {
+  // La ruta propuesta se arma directamente de la audiencia real de cada documento
+  // (documento.areas), así que cambia de verdad según el área elegida.
+  const propios = S.documentos.filter(d => d.areas.includes(areaId)).map(d => d.id);
+  if (propios.length) return propios;
   const extra = (RUTA_EXTRA_AREA[areaId] || []).filter(id => !RUTA_BASE.includes(id));
   return [...RUTA_BASE, ...extra];
 };
@@ -2368,7 +2372,7 @@ function modalNuevoColaborador() {
         <div class="field"><span class="login__label">Fecha de ingreso</span><input id="nc-ingreso" value="2026-09-21"></div>
       </div>
       <div class="divider"></div>
-      <div class="sec__t">Ruta propuesta según el área (el Manager la revisará antes de activarla)</div>
+      <div class="sec__t" id="nc-ruta-t">Ruta propuesta según el área</div>
       <div class="doclist" id="nc-ruta"></div>
       <div class="explain mt-16">${svg(ICO.alert)} El colaborador <b>no verá esta documentación</b> hasta que <b id="nc-mgr-preview">su Manager</b> la confirme en "Nuevos por validar".</div>
     </div>
@@ -2379,7 +2383,9 @@ function modalNuevoColaborador() {
 
   const pintarRutaPreview = () => {
     const area = $('#nc-area').value;
-    $('#nc-ruta').innerHTML = rutaBaseParaArea(area).map(id => { const d = doc(id); return `
+    const ids = rutaBaseParaArea(area);
+    $('#nc-ruta-t').textContent = `Ruta propuesta según el área (${ids.length} documentos · el Manager la revisará antes de activarla)`;
+    $('#nc-ruta').innerHTML = ids.map(id => { const d = doc(id); return `
       <div class="docitem" style="padding:9px 12px">
         <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:28px;height:32px">${svg(ICO.file)}</span>
         <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
@@ -2564,4 +2570,5 @@ $('#ov').onclick = (e) => { if (e.target.id === 'ov') { if (S.quiz) { clearInter
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (S.quiz) { clearInterval(S.quiz.timer); S.quiz = null; } closeModal(); closeDrawer(); $('#pop').classList.remove('is-on'); }
 });
+
 
