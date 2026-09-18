@@ -44,7 +44,8 @@ const ICO = {
   send:'<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>',
   x:'<path d="M18 6 6 18M6 6l12 12"/>',
   mail:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/>',
-  refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>'
+  refresh:'<path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/>',
+  chevron:'<path d="m9 18 6-6-6-6"/>'
 };
 const svg = (p, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 
@@ -108,8 +109,13 @@ function recalcularColaborador(c) {
   const total = docs.length + evals.length;
   const hechos = docsLeidos + evalsAprobadas;
   c.progreso = total ? pct(hechos, total) : 0;
+  // El promedio se calcula únicamente sobre exámenes rendidos (nunca sobre lecturas).
   c.promedio = conPuntaje.length ? Math.round(conPuntaje.reduce((a, e) => a + e.puntaje, 0) / conPuntaje.length) : 0;
-  c.pendientes = docs.filter(d => d.estado === 'pendiente').length + evals.filter(e => e.estado === 'pendiente').length;
+  // "Pendientes" = evaluaciones que el colaborador todavía debe rendir: las de su
+  // ruta inicial más las evaluaciones periódicas de micro aprendizaje (brechas) que
+  // le llegan aunque ya haya terminado toda su documentación.
+  const camp = c.estadoAlta === 'pendiente_validacion' ? [] : campaniasPara(c.area);
+  c.pendientes = evals.filter(e => e.estado === 'pendiente').length + camp.length;
 
   if (c.estadoAlta === 'pendiente_validacion') { c.fase = 0; c.estado = 'por_iniciar'; return; }
   if (!docs.length) { c.fase = 1; }
@@ -117,14 +123,48 @@ function recalcularColaborador(c) {
   else if (evalsAprobadas < evals.length) { c.fase = 3; }
   else { c.fase = 5; }
 
-  if (c.progreso >= 100) c.estado = 'completado';
+  // El estado depende SOLO de la ruta de documentos/evaluaciones (no de las campañas
+  // periódicas): si una actualización mayor obliga a releer un documento, el conteo
+  // de "aprobados" baja y el colaborador vuelve a "en curso" hasta volver a aprobar.
+  const { aprobados, total: totalDocs } = docResumen(c);
+  if (totalDocs && aprobados >= totalDocs) c.estado = 'completado';
   else if (c.estado === 'atrasado') { /* se conserva el riesgo ya marcado en el dato semilla */ }
-  else if (c.progreso === 0) c.estado = 'por_iniciar';
+  else if (aprobados === 0) c.estado = 'por_iniciar';
   else c.estado = 'en_curso';
 }
 
 /* Colaborador con el que se inició sesión ahora mismo */
 const colaboradorActivo = () => S.colaboradores.find(c => c.id === S.user.colaboradorId);
+
+/* ------------------------------------------------------------
+   2.2b Documentos: sólo cuenta como "aprobado" un documento leído
+   cuando, además, su evaluación asociada (si tiene) está aprobada.
+   Esto reemplaza la antigua noción de "Fase X de 5" por algo que
+   el Admin y el colaborador entienden de un vistazo: 7/10 documentos.
+------------------------------------------------------------ */
+function docResumen(c) {
+  const docs = c.documentosRuta || [];
+  const total = docs.length;
+  const aprobados = docs.filter(d => {
+    if (d.estado !== 'leido') return false;
+    const ruta = (c.evaluacionesRuta || []).find(e => { const ev = evalu(e.evId); return ev && ev.docId === d.docId; });
+    return ruta ? ruta.estado === 'aprobada' : true;
+  }).length;
+  return { aprobados, total };
+}
+const docTxt = (c) => { const r = docResumen(c); return `${r.aprobados}/${r.total || 0}`; };
+
+/* Campañas de micro aprendizaje activas cuya audiencia alcanza a un área
+   (se usan como "pendientes" recurrentes, aunque el colaborador ya haya
+   terminado toda su ruta inicial de documentos). */
+function campaniasPara(areaId) {
+  const a = DB.areas.find(x => x.id === areaId); if (!a) return [];
+  return S.campanas.filter(c => {
+    if (c.estado !== 'activa') return false;
+    if (c.audiencia.includes('Toda la organización')) return true;
+    return c.audiencia.split(',').map(t => t.trim()).some(t => t === a.id || t === a.nombre);
+  });
+}
 
 /* ------------------------------------------------------------
    2.3 Siembra inicial: le da a cada colaborador una ruta real.
@@ -465,27 +505,35 @@ function vAdminDashboard() {
   <div class="grid g-4">
     ${kpi('Cumplimiento de lectura', '89%', 'Meta trimestral 85%', trend('up', '+5 pts'), spark(s.lectura))}
     ${kpi('Comprensión promedio', prom + '%', 'Mínimo de aprobación 80%', trend('up', '+3 pts'), spark(s.evaluacion, '#0E7A56'))}
-    ${kpi('Inducciones en curso', enCurso, `${atrasados} requieren atención`, trend('flat', 'estable'), '')}
-    ${kpi('Documentos controlados', S.documentos.length, '2 publicados esta semana', trend('up', '+2'), '')}
+    ${kpi('Inducciones en curso', enCurso, `Colaboradores con documentos por leer o aprobar · ${atrasados} requieren atención`, trend('flat', 'estable'), '')}
+    ${kpi('Documentos controlados', S.documentos.length, 'Documentos vigentes en el repositorio', trend('up', '+2'), '')}
   </div>
 
   <div class="grid g-72 mt-16">
     <section class="card">
       <div class="card__head">
-        <div><h3>Evolución del cumplimiento</h3><p>Últimas 12 semanas · lectura confirmada frente a evaluaciones aprobadas</p></div>
-        <div class="right"><span class="tag">2026</span></div>
+        <div><h3>Estado de la inducción por área</h3><p>Toque un área para ver el detalle de cada colaborador</p></div>
       </div>
       <div class="card__body">
-        ${lineChart(s.labels, [
-          { name:'Lectura confirmada', color:'#1F53CE', values:s.lectura },
-          { name:'Evaluación aprobada', color:'#0E7A56', values:s.evaluacion }
-        ])}
-        <div class="legend"><span><i style="background:#1F53CE"></i>Lectura confirmada</span><span><i style="background:#0E7A56"></i>Evaluación aprobada</span></div>
+        <div class="arealist">
+          ${DB.areas.map(a => {
+            const de = S.colaboradores.filter(c => c.area === a.id);
+            const comp = de.filter(c => c.estado === 'completado').length;
+            const en = de.filter(c => c.estado === 'en_curso').length;
+            const atr = de.filter(c => c.estado === 'atrasado').length;
+            return `<button class="arearow" data-area-open="${a.id}">
+              <span class="arearow__n">${esc(a.nombre)}</span>
+              <span class="arearow__m num">${de.length} colaboradores</span>
+              <span class="arearow__b">${comp} completado · ${en} en curso${atr ? ` · ${atr} atrasado` : ''}</span>
+              <span class="arearow__chev">${svg(ICO.chevron)}</span>
+            </button>`;
+          }).join('')}
+        </div>
       </div>
     </section>
 
     <section class="card">
-      <div class="card__head"><div><h3>Estado de las inducciones</h3><p>Distribución actual</p></div></div>
+      <div class="card__head"><div><h3>Estado de las inducciones</h3><p>Distribución actual · toda la organización</p></div></div>
       <div class="card__body">${donut(DB.series.distribucionEstados)}</div>
     </section>
   </div>
@@ -498,14 +546,14 @@ function vAdminDashboard() {
       </div>
       <div class="card__body card__body--flush tablewrap">
         <table class="tbl"><thead><tr>
-          <th>Colaborador</th><th>Área</th><th>Fase</th><th>Avance</th><th>Última actividad</th><th>Estado</th><th></th>
+          <th>Colaborador</th><th>Área</th><th>Documentos</th><th>Pendientes</th><th>Última actividad</th><th>Estado</th><th></th>
         </tr></thead><tbody>
         ${cols.filter(c => c.riesgo !== 'bajo').sort((a, b) => a.progreso - b.progreso).slice(0, 6).map(c => `
           <tr class="clickrow" data-col="${c.id}">
             <td>${persona(c.nombre, c.cargo)}</td>
             <td>${areaNom(c.area)}</td>
-            <td class="num">${c.fase} de 5</td>
-            <td style="min-width:130px">${bar(c.progreso, c.progreso < 40 ? 'danger' : c.progreso < 70 ? 'warn' : '')}</td>
+            <td class="num">${docTxt(c)}</td>
+            <td class="num">${c.pendientes}</td>
             <td class="muted">${c.ultimaActividad}</td>
             <td>${badgeEstado(c.estado)}</td>
             <td class="r"><button class="btn btn--sm" data-recordar="${c.id}">Recordar</button></td>
@@ -564,6 +612,40 @@ function vAdminDashboard() {
   </section>`;
 }
 
+/* ------------------------------------------------------------
+   6.1 Detalle de inducción por área (modal que se abre al hacer
+   clic en una fila de la lista de áreas del panel general).
+------------------------------------------------------------ */
+function modalAreaEstado(areaId) {
+  const a = DB.areas.find(x => x.id === areaId);
+  const de = S.colaboradores.filter(c => c.area === areaId);
+  const dist = ['completado', 'en_curso', 'atrasado', 'por_iniciar'].map(k => ({
+    label: ESTADOS[k][1], valor: de.filter(c => c.estado === k).length,
+    color: k === 'completado' ? 'ok' : k === 'en_curso' ? 'info' : k === 'atrasado' ? 'warn' : 'muted'
+  }));
+  modal(modalHead(`Estado de inducción · ${a.nombre}`, `${de.length} colaboradores del área · igual criterio que "Estado de las inducciones" pero filtrado a este grupo`) + `
+    <div class="modal__body">
+      <div class="card__body" style="padding:0 0 18px">${donut(dist)}</div>
+      <div class="divider"></div>
+      <div class="sec__t">Colaboradores de ${esc(a.nombre)}</div>
+      <div class="tablewrap">
+        <table class="tbl"><thead><tr><th>Colaborador</th><th>Manager</th><th>Documentos</th><th>Pendientes</th><th>Promedio</th><th>Estado</th></tr></thead><tbody>
+        ${de.map(c => `<tr class="clickrow" data-col="${c.id}">
+          <td>${persona(c.nombre, c.cargo)}</td>
+          <td>${esc(c.manager)}</td>
+          <td class="num">${docTxt(c)}</td>
+          <td class="num">${c.pendientes}</td>
+          <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
+          <td>${badgeEstado(c.estado)}</td>
+        </tr>`).join('') || `<tr><td colspan="6" class="tbl__empty">Sin colaboradores en esta área.</td></tr>`}
+        </tbody></table>
+      </div>
+    </div>
+    <div class="modal__foot"><span class="spacer"></span><button class="btn btn--ghost" data-close>Cerrar</button></div>`, 'modal--wide');
+  bindModal();
+  $$('[data-col]', $('#modal')).forEach(el => el.onclick = () => { closeModal(); fichaColaborador(el.dataset.col); });
+}
+
 function vColaboradores() {
   const f = S.filtro;
   const lista = S.colaboradores.filter(c =>
@@ -590,16 +672,16 @@ function vColaboradores() {
     </div>
     <div class="tablewrap">
       <table class="tbl" id="tblCols"><thead><tr>
-        <th>Colaborador</th><th>Área</th><th>Manager</th><th>Ingreso</th><th>Fase</th><th>Avance</th><th>Promedio</th><th>Pendientes</th><th>Estado</th><th></th>
+        <th>Colaborador</th><th>Área</th><th>Cargo</th><th>Manager</th><th>Ingreso</th><th>Documentos</th><th>Promedio</th><th>Pendientes</th><th>Estado</th><th></th>
       </tr></thead><tbody>
       ${lista.map(c => `
         <tr class="clickrow" data-col="${c.id}">
           <td>${persona(c.nombre, c.cargo)}</td>
           <td>${areaNom(c.area)}</td>
+          <td>${esc(c.cargo)}</td>
           <td>${esc(c.manager)}</td>
           <td class="num">${fechaLarga(c.ingreso)}</td>
-          <td class="num">${c.fase}/5</td>
-          <td style="min-width:130px">${bar(c.progreso, c.progreso < 40 ? 'danger' : c.progreso < 70 ? 'warn' : 'ok')}</td>
+          <td class="num">${docTxt(c)}</td>
           <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
           <td class="num">${c.pendientes}</td>
           <td>${badgeEstado(c.estado)}</td>
@@ -1000,23 +1082,23 @@ function vManagerDashboard() {
 
   <div class="grid g-4">
     ${kpi('Colaboradores a cargo', eq.length, `${eq.filter(c => c.estado === 'completado').length} con inducción cerrada`, '', '')}
-    ${kpi('Avance promedio', Math.round(eq.reduce((a, c) => a + c.progreso, 0) / eq.length) + '%', 'Del total de fases asignadas', trend('up', '+7 pts'), '')}
+    ${kpi('Avance promedio', Math.round(eq.reduce((a, c) => a + c.progreso, 0) / eq.length) + '%', 'Documentos aprobados sobre el total asignado', trend('up', '+7 pts'), '')}
     ${kpi('Comprensión promedio', prom + '%', 'Mínimo exigido 80%', trend('up', '+2 pts'), '')}
     ${kpi('Casos escalados', '1', 'Rodrigo Ferrufino · 6 días sin actividad', trend('flat', 'sin cambio'), '')}
   </div>
 
   <div class="grid g-64 mt-16">
     <section class="card">
-      <div class="card__head"><div><h3>Avance del equipo</h3><p>Seguimiento individual por fase</p></div>
+      <div class="card__head"><div><h3>Avance del equipo</h3><p>Documentos aprobados sobre el total asignado a cada colaborador</p></div>
         <div class="right"><button class="btn btn--sm" data-view-go="equipo">Ver detalle</button></div></div>
       <div class="card__body card__body--flush tablewrap">
-        <table class="tbl"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Fase</th><th>Avance</th><th>Promedio</th><th>Estado</th><th></th></tr></thead><tbody>
+        <table class="tbl"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Cargo</th><th>Documentos</th><th>Promedio</th><th>Estado</th><th></th></tr></thead><tbody>
         ${eq.map(c => `
           <tr class="clickrow" data-col="${c.id}">
             <td>${persona(c.nombre, c.cargo)}</td>
             <td class="num">${fechaLarga(c.ingreso)}</td>
-            <td class="num">${c.fase}/5</td>
-            <td style="min-width:130px">${bar(c.progreso, c.progreso < 40 ? 'danger' : c.progreso < 70 ? 'warn' : 'ok')}</td>
+            <td>${esc(c.cargo)}</td>
+            <td class="num">${docTxt(c)}</td>
             <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
             <td>${badgeEstado(c.estado)}</td>
             <td class="r"><button class="btn btn--sm" data-recordar="${c.id}">Recordar</button></td>
@@ -1120,13 +1202,13 @@ function vEquipo() {
       <span class="spacer"></span><span class="small muted num">${eq.length} colaboradores</span>
     </div>
     <div class="tablewrap">
-      <table class="tbl" id="tblEq"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Fase</th><th>Avance</th><th>Pendientes</th><th>Promedio</th><th>Última actividad</th><th>Estado</th><th></th></tr></thead><tbody>
+      <table class="tbl" id="tblEq"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Cargo</th><th>Documentos</th><th>Pendientes</th><th>Promedio</th><th>Última actividad</th><th>Estado</th><th></th></tr></thead><tbody>
       ${eq.map(c => `
         <tr class="clickrow" data-col="${c.id}">
           <td>${persona(c.nombre, c.cargo)}</td>
           <td class="num">${fechaLarga(c.ingreso)}</td>
-          <td class="num">${c.fase}/5</td>
-          <td style="min-width:130px">${bar(c.progreso, c.progreso < 40 ? 'danger' : c.progreso < 70 ? 'warn' : 'ok')}</td>
+          <td>${esc(c.cargo)}</td>
+          <td class="num">${docTxt(c)}</td>
           <td class="num">${c.pendientes}</td>
           <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
           <td class="muted">${c.ultimaActividad}</td>
@@ -1518,6 +1600,9 @@ function bindVista() {
   const fq = $('#fq');
   if (fq) fq.oninput = () => filtrarTabla(fq.value);
 
+  // Detalle de inducción por área (panel general)
+  $$('[data-area-open]').forEach(b => b.onclick = () => modalAreaEstado(b.dataset.areaOpen));
+
   // Ficha del colaborador
   $$('[data-col],[data-col-open]').forEach(el => el.onclick = (e) => {
     if (e.target.closest('[data-recordar]')) return;
@@ -1619,7 +1704,10 @@ function accion(a, btn) {
 ------------------------------------------------------------ */
 function fichaColaborador(id) {
   const c = S.colaboradores.find(x => x.id === id); if (!c) return;
-  const docs = S.documentos.filter(d => d.areas.includes(c.area)).slice(0, 6);
+  const ruta = c.documentosRuta && c.documentosRuta.length ? c.documentosRuta : [];
+  const { aprobados, total } = docResumen(c);
+  const camp = campaniasPara(c.area);
+  const pctDocs = total ? pct(aprobados, total) : 0;
   drawer(`
     <div class="drawer__head">
       <span class="av av--lg">${ini(c.nombre)}</span>
@@ -1632,47 +1720,52 @@ function fichaColaborador(id) {
     </div>
     <div class="drawer__body">
       <div class="row" style="gap:22px;align-items:center">
-        ${ring(c.progreso, 92, 'de la ruta', c.progreso < 40 ? '#B4342A' : c.progreso < 70 ? '#D99A12' : '#0E7A56')}
+        ${ring(pctDocs, 92, `${aprobados}/${total} documentos`, pctDocs < 40 ? '#B4342A' : pctDocs < 70 ? '#D99A12' : '#0E7A56')}
         <dl class="kv" style="flex:1">
           <dt>Identificador</dt><dd class="num">${c.id}</dd>
+          <dt>Cargo</dt><dd>${esc(c.cargo)}</dd>
           <dt>Fecha de ingreso</dt><dd class="num">${fechaLarga(c.ingreso)} · hace ${diasDesde(c.ingreso)} días</dd>
           <dt>Manager</dt><dd>${esc(c.manager)}</dd>
-          <dt>Fase actual</dt><dd>${c.fase} de 5 · ${DB.fases[c.fase - 1].nombre}</dd>
-          <dt>Promedio</dt><dd class="num">${c.promedio ? c.promedio + '%' : 'Sin evaluaciones'}</dd>
+          <dt>Documentos aprobados</dt><dd class="num">${aprobados}/${total}</dd>
+          <dt>Promedio de exámenes</dt><dd class="num">${c.promedio ? c.promedio + '%' : 'Sin evaluaciones'}</dd>
+          <dt>Pendientes</dt><dd class="num">${c.pendientes} evaluación(es)</dd>
           <dt>Última actividad</dt><dd>${c.ultimaActividad}</dd>
         </dl>
       </div>
 
       <div class="sec">
-        <div class="sec__t">Avance por fase</div>
-        <ol class="phases" style="flex-direction:column;gap:12px">
-          ${DB.fases.map(f => `<li class="phase ${f.n < c.fase ? 'done' : f.n === c.fase ? 'current' : ''}" style="padding:0">
-            <div class="phase__bar" style="margin-bottom:7px"></div>
-            <div class="row" style="justify-content:space-between">
-              <span><span class="phase__n">Fase ${f.n}</span> <span class="phase__t" style="display:inline">${f.nombre}</span></span>
-              <span class="small muted">${f.n < c.fase ? 'Completada' : f.n === c.fase ? 'En curso' : 'Pendiente'}</span>
-            </div></li>`).join('')}
-        </ol>
-      </div>
-
-      <div class="sec">
-        <div class="sec__t">Documentación asignada (${docs.length})</div>
+        <div class="sec__t">Documentación asignada (${ruta.length})</div>
         <div class="doclist">
-          ${docs.map((d, i) => `<div class="docitem" style="padding:10px 12px">
+          ${ruta.map(md => { const d = doc(md.docId); if (!d) return ''; const evRuta = (c.evaluacionesRuta || []).find(e => { const ev = evalu(e.evId); return ev && ev.docId === md.docId; });
+            let est = '<span class="badge badge--warn">Pendiente</span>';
+            if (md.estado === 'leido') est = evRuta ? (evRuta.estado === 'aprobada' ? '<span class="badge badge--ok">Aprobado</span>' : evRuta.estado === 'bloqueada' ? '<span class="badge badge--info">Leído · evaluación bloqueada</span>' : '<span class="badge badge--warn">Leído · evaluación pendiente</span>') : '<span class="badge badge--ok">Leído</span>';
+            return `<div class="docitem" style="padding:10px 12px">
             <span class="docitem__ic" style="width:30px;height:34px">${svg(ICO.file)}</span>
             <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
-              <span class="docitem__m"><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
-            <span class="docitem__a">${i < c.fase ? '<span class="badge badge--ok">Leído</span>' : '<span class="badge badge--warn">Pendiente</span>'}</span>
-          </div>`).join('')}
+              <span class="docitem__m"><span>v${d.version}</span><span>${d.minutos} min</span><span>${esc(md.origen || '')}</span></span></span>
+            <span class="docitem__a">${est}</span>
+          </div>`; }).join('') || '<p class="small muted">Sin documentación asignada todavía.</p>'}
         </div>
       </div>
+
+      ${camp.length ? `<div class="sec">
+        <div class="sec__t">Micro evaluaciones periódicas (${camp.length})</div>
+        <p class="small muted" style="margin:0 0 8px">Aunque ya haya terminado su documentación, estas evaluaciones de refuerzo le llegan de forma recurrente y cuentan como "Pendientes" hasta que las responde.</p>
+        <div class="doclist">
+          ${camp.map(cm => `<div class="docitem" style="padding:10px 12px">
+            <span class="docitem__ic" style="width:30px;height:34px;background:var(--accent-050);border-color:#F3DFCE;color:var(--accent)">${svg(ICO.spark)}</span>
+            <span class="docitem__b"><b style="font-size:13px">${esc(cm.nombre)}</b>
+              <span class="docitem__m"><span>${cm.periodicidad}</span><span>Próxima: ${cm.proxima}</span></span></span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
 
       <div class="sec">
         <div class="sec__t">Historial reciente</div>
         <ul class="feed">
-          <li><span class="feed__i ok">${svg(ICO.check)}</span><span><b>Confirmó la lectura de ${esc(docs[0].titulo)}</b><small>${c.ultimaActividad}</small></span></li>
+          ${ruta[0] ? `<li><span class="feed__i ok">${svg(ICO.check)}</span><span><b>Confirmó la lectura de ${esc(doc(ruta[0].docId).titulo)}</b><small>${c.ultimaActividad}</small></span></li>` : ''}
           <li><span class="feed__i brand">${svg(ICO.bell)}</span><span><b>Recibió un recordatorio automático</b><small>Hace 2 días · correo corporativo</small></span></li>
-          <li><span class="feed__i ia">${svg(ICO.spark)}</span><span><b>La IA generó su evaluación de fase ${c.fase}</b><small>5 preguntas · mínimo 80%</small></span></li>
+          <li><span class="feed__i ia">${svg(ICO.spark)}</span><span><b>La IA generó su evaluación de comprensión</b><small>5 preguntas · mínimo 80%</small></span></li>
         </ul>
       </div>
     </div>
@@ -2471,3 +2564,4 @@ $('#ov').onclick = (e) => { if (e.target.id === 'ov') { if (S.quiz) { clearInter
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (S.quiz) { clearInterval(S.quiz.timer); S.quiz = null; } closeModal(); closeDrawer(); $('#pop').classList.remove('is-on'); }
 });
+
