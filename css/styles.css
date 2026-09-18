@@ -367,8 +367,18 @@ table{border-collapse:collapse;width:100%}
 .opt.bad{border-color:var(--danger);background:var(--danger-050)}
 .opt.bad .opt__k{background:var(--danger);color:#fff}
 .opt:disabled{cursor:default}
-.explain{margin-top:16px;padding:13px 15px;border-radius:var(--r);background:#F7F9FC;border:1px solid var(--line-soft);font-size:13px;color:var(--text-2);max-width:660px}
+.explain{margin-top:16px;padding:13px 15px;border-radius:var(--r);background:#F7F9FC;border:1px solid var(--line-soft);font-size:13px;color:var(--text-2);max-width:660px;display:flex;gap:10px;align-items:flex-start}
 .explain b{color:var(--text)}
+.explain svg{width:16px;height:16px;flex:none;margin-top:1px;color:var(--warn)}
+
+/* Lista de áreas del panel general (reemplaza la gráfica de evolución) */
+.arealist{display:flex;flex-direction:column;gap:8px}
+.arearow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border:1px solid var(--line-soft);border-radius:var(--r);background:#fff;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.arearow:hover{border-color:var(--brand);background:#F7F9FC}
+.arearow__n{font-weight:600;min-width:170px}
+.arearow__m{color:var(--text-2);font-size:12.6px;min-width:120px}
+.arearow__b{margin-left:auto;font-size:12.6px;color:var(--text-2);text-align:right}
+.arearow__chev{color:var(--muted);flex:none}
 .quiz__foot{display:flex;align-items:center;gap:12px;margin-top:22px}
 
 .result{text-align:center;padding:30px 20px}
@@ -542,3 +552,4 @@ table{border-collapse:collapse;width:100%}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms !important;transition-duration:.001ms !important}
 }
+
