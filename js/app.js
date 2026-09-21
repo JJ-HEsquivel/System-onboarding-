@@ -115,11 +115,21 @@ function recalcularColaborador(c) {
   c.progreso = total ? pct(hechos, total) : 0;
   // El promedio se calcula únicamente sobre exámenes rendidos (nunca sobre lecturas).
   c.promedio = conPuntaje.length ? Math.round(conPuntaje.reduce((a, e) => a + e.puntaje, 0) / conPuntaje.length) : 0;
-  // "Pendientes" = evaluaciones que el colaborador todavía debe rendir: las de su
-  // ruta inicial más las evaluaciones periódicas de micro aprendizaje (brechas) que
-  // le llegan aunque ya haya terminado toda su documentación.
+
+  // "Pendientes" = evaluaciones que el colaborador todavía debe rendir.
+  // 1) Una por cada documento de su ruta que aún no está aprobado (sin importar si ya
+  //    desbloqueó la evaluación o todavía ni lee el documento): si le asignaron 10
+  //    documentos, arranca con 10 pendientes, y baja de a 1 a medida que aprueba.
+  // 2) Más las evaluaciones de campañas de micro aprendizaje (brechas) que le llegan
+  //    DESPUÉS de que ya inició su ruta — nunca al momento de crearlo, porque esas
+  //    campañas no son parte de su documentación asignada. Si además tiene alguna
+  //    evaluación de campaña ya respondida y aprobada, no vuelve a contar hasta el
+  //    siguiente envío (periodicidad).
+  const { aprobados: docsAprobados, total: docsTotal } = docResumen(c);
+  const pendDocs = docsTotal - docsAprobados;
   const camp = c.estadoAlta === 'pendiente_validacion' ? [] : campaniasPara(c.area);
-  c.pendientes = evals.filter(e => e.estado === 'pendiente').length + camp.length;
+  const campPend = camp.filter(cm => !(c.campaniasRespondidas || []).includes(cm.id));
+  c.pendientes = pendDocs + campPend.length;
 
   if (c.estadoAlta === 'pendiente_validacion') { c.fase = 0; c.estado = 'por_iniciar'; return; }
   if (!docs.length) { c.fase = 1; }
@@ -130,10 +140,9 @@ function recalcularColaborador(c) {
   // El estado depende SOLO de la ruta de documentos/evaluaciones (no de las campañas
   // periódicas): si una actualización mayor obliga a releer un documento, el conteo
   // de "aprobados" baja y el colaborador vuelve a "en curso" hasta volver a aprobar.
-  const { aprobados, total: totalDocs } = docResumen(c);
-  if (totalDocs && aprobados >= totalDocs) c.estado = 'completado';
+  if (docsTotal && docsAprobados >= docsTotal) c.estado = 'completado';
   else if (c.estado === 'atrasado') { /* se conserva el riesgo ya marcado en el dato semilla */ }
-  else if (aprobados === 0) c.estado = 'por_iniciar';
+  else if (docsAprobados === 0) c.estado = 'por_iniciar';
   else c.estado = 'en_curso';
 }
 
