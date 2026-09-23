@@ -512,7 +512,7 @@ function vAdminDashboard() {
   const s = DB.series.cumplimientoSemanal;
 
   return head('dashboard', `
-    <button class="btn" data-act="export">${svg(ICO.down)} Exportar reporte</button>
+    <button class="btn" data-act="export"></button>
     <button class="btn btn--primary" data-act="nuevo-col">${svg(ICO.plus)} Registrar colaborador</button>`) + `
 
   <div class="grid g-4">
