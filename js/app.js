@@ -942,14 +942,7 @@ function vAnalitica() {
   </div>
 
   <section class="card mt-16">
-    <div class="card__head"><div><h3>Comprensión frente a lectura</h3><p>La distancia entre ambas curvas es la brecha real de comprensión</p></div></div>
-    <div class="card__body">
-      ${lineChart(s.labels, [
-        { name:'Lectura', color:'#1F53CE', values:s.lectura },
-        { name:'Comprensión', color:'#E8620F', values:s.evaluacion }
-      ])}
-      <div class="legend"><span><i style="background:#1F53CE"></i>Lectura confirmada</span><span><i style="background:#E8620F"></i>Comprensión verificada</span></div>
-    </div>
+
   </section>`;
 }
 
