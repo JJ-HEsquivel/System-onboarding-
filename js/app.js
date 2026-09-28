@@ -575,23 +575,7 @@ function vAdminDashboard() {
     </section>
 
     <div class="stack">
-      <section class="card ia">
-        <div class="card__head">
-          <div><h3>Sugerencias de la IA</h3><p>Generadas a partir de los resultados de las últimas 4 semanas</p></div>
-          <div class="right"><span class="ia__badge">${svg(ICO.spark)} IA</span></div>
-        </div>
-        <div class="card__body">
-          ${DB.sugerenciasIA.slice(0, 3).map(s2 => `
-            <div class="sugg">
-              <div class="sugg__b">
-                <b>${esc(s2.t)}</b>
-                <p>${esc(s2.d)}</p>
-                <button class="btn btn--sm" data-act="ia-accion" data-txt="${esc(s2.accion)}">${esc(s2.accion)}</button>
-                <span class="tag ${s2.impacto === 'alto' ? 'tag--ai' : ''}">Impacto ${s2.impacto}</span>
-              </div>
-            </div>`).join('')}
-        </div>
-      </section>
+
 
       <section class="card">
         <div class="card__head"><div><h3>Actividad de hoy</h3><p>16 de septiembre de 2026</p></div></div>
