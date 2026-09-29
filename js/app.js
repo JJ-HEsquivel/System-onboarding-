@@ -19,6 +19,7 @@ const fechaLarga = (iso) => {
   return `${d.getDate()} ${m[d.getMonth()]} ${d.getFullYear()}`;
 };
 const diasDesde = (iso) => Math.round((new Date('2026-09-16T00:00:00') - new Date(iso + 'T00:00:00')) / 864e5);
+const HOY = '2026-09-16';
 
 const ICO = {
   home:'<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/>',
@@ -73,26 +74,12 @@ const evalu = (id) => DB.evaluaciones.find(e => e.id === id);
 const areaNom = (id) => (DB.areas.find(a => a.id === id) || {}).nombre || id;
 
 /* ------------------------------------------------------------
-   2.1 Rutas de documentos por área (base institucional del flujo:
-   diapositiva 6, etapa 1 — "Activar su ruta inicial de aprendizaje")
+   2.1 Rutas de documentos por área — se arman directamente de la
+   audiencia real de cada documento (documento.areas) y quedan
+   ordenadas por etapa (Etapa 1 → Etapa 2 → Etapa 3 según el área).
 ------------------------------------------------------------ */
-const RUTA_BASE = ['DOC-010', 'DOC-002', 'DOC-003', 'DOC-001', 'DOC-007'];
-const RUTA_EXTRA_AREA = {
-  ENG: ['DOC-011', 'DOC-005', 'DOC-008', 'DOC-004'],
-  QA:  ['DOC-004', 'DOC-009', 'DOC-011', 'DOC-005'],
-  IT:  ['DOC-006', 'DOC-005'],
-  FIN: ['DOC-012', 'DOC-008'],
-  PMO: ['DOC-004', 'DOC-008'],
-  HR:  ['DOC-012']
-};
-const rutaBaseParaArea = (areaId) => {
-  // La ruta propuesta se arma directamente de la audiencia real de cada documento
-  // (documento.areas), así que cambia de verdad según el área elegida.
-  const propios = S.documentos.filter(d => d.areas.includes(areaId)).map(d => d.id);
-  if (propios.length) return propios;
-  const extra = (RUTA_EXTRA_AREA[areaId] || []).filter(id => !RUTA_BASE.includes(id));
-  return [...RUTA_BASE, ...extra];
-};
+const rutaBaseParaArea = (areaId) => S.documentos.filter(d => d.areas.includes(areaId)).map(d => d.id);
+const origenParaDoc = (docId) => { const d = doc(docId); const e = d && DB.etapas.find(x => x.id === d.etapaId); return e ? e.nombre : 'Ruta de área'; };
 
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const correoDe = (nombre) => nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, '.') + '@jalasoft.com';
@@ -160,12 +147,35 @@ function docResumen(c) {
   const total = docs.length;
   const aprobados = docs.filter(d => {
     if (d.estado !== 'leido') return false;
-    const ruta = (c.evaluacionesRuta || []).find(e => { const ev = evalu(e.evId); return ev && ev.docId === d.docId; });
-    return ruta ? ruta.estado === 'aprobada' : true;
+    // 1) Evaluación de la ETAPA a la que pertenece el documento (cubre varios
+    //    documentos a la vez): si está pendiente/bloqueada, el documento no cuenta
+    //    como aprobado todavía, aunque ya se haya leído.
+    if (d.etapaId) {
+      const rutaEtapa = (c.evaluacionesRuta || []).find(e => e.etapaId === d.etapaId);
+      if (rutaEtapa && rutaEtapa.estado !== 'aprobada') return false;
+    }
+    // 2) Evaluación ad-hoc asignada específicamente a ESTE documento (generada
+    //    desde Evaluaciones o desde una actualización mayor), independiente de la etapa.
+    const rutaDoc = (c.evaluacionesRuta || []).find(e => !e.etapaId && evalu(e.evId) && evalu(e.evId).docId === d.docId);
+    if (rutaDoc && rutaDoc.estado !== 'aprobada') return false;
+    return true;
   }).length;
   return { aprobados, total };
 }
 const docTxt = (c) => { const r = docResumen(c); return `${r.aprobados}/${r.total || 0}`; };
+
+/* Resumen de avance por etapa, para mostrar en la ficha del colaborador. */
+function etapasResumen(c) {
+  const docs = c.documentosRuta || [];
+  const etapasIds = [...new Set(docs.map(d => d.etapaId).filter(Boolean))];
+  return etapasIds.map(etapaId => {
+    const e = DB.etapas.find(x => x.id === etapaId);
+    const docsEtapa = docs.filter(d => d.etapaId === etapaId);
+    const leidos = docsEtapa.filter(d => d.estado === 'leido').length;
+    const evalRuta = (c.evaluacionesRuta || []).find(x => x.etapaId === etapaId);
+    return { etapaId, nombre: e ? e.nombre : etapaId, orden: e ? e.orden : 99, docs: docsEtapa, leidos, total: docsEtapa.length, evalRuta };
+  }).sort((a, b) => a.orden - b.orden);
+}
 
 /* Campañas de micro aprendizaje activas cuya audiencia alcanza a un área
    (se usan como "pendientes" recurrentes, aunque el colaborador ya haya
@@ -200,21 +210,26 @@ function inicializarRutas() {
       const leidosN = Math.round((c.progreso / 100) * ids.length);
       c.documentosRuta = ids.map((docId, i) => ({
         docId,
+        etapaId: doc(docId).etapaId,
         estado: i < leidosN ? 'leido' : 'pendiente',
         confirmado: i < leidosN ? sumarDias(c.ingreso, i + 1) + ' · registrado' : null,
         vence: sumarDias(c.ingreso, 5 + i),
-        origen: RUTA_BASE.includes(docId) ? 'Ruta base' : 'Ruta de área'
+        origen: origenParaDoc(docId)
       }));
-      c.evaluacionesRuta = c.documentosRuta
-        .filter(d => DB.evaluaciones.some(e => e.docId === d.docId))
-        .map(d => {
-          const ev = DB.evaluaciones.find(e => e.docId === d.docId);
-          if (d.estado !== 'leido') return { evId: ev.id, estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 };
-          const aprobada = c.estado === 'completado' || c.promedio >= 70;
-          return aprobada
-            ? { evId: ev.id, estado: 'aprobada', puntaje: c.promedio || 80, fecha: sumarDias(c.ingreso, 6) + ' · registrado', intento: 1 }
-            : { evId: ev.id, estado: 'pendiente', puntaje: null, fecha: null, intento: 0 };
-        });
+      // Una evaluación por cada ETAPA presente en su ruta (no una por documento):
+      // se desbloquea solo cuando todos los documentos de esa etapa están leídos.
+      const etapasEnRuta = [...new Set(c.documentosRuta.map(d => d.etapaId).filter(Boolean))];
+      c.evaluacionesRuta = etapasEnRuta.map(etapaId => {
+        const ev = DB.evaluaciones.find(e => e.etapaId === etapaId);
+        if (!ev) return null;
+        const docsEtapa = c.documentosRuta.filter(d => d.etapaId === etapaId);
+        const todosLeidos = docsEtapa.every(d => d.estado === 'leido');
+        if (!todosLeidos) return { evId: ev.id, etapaId, estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 };
+        const aprobada = c.estado === 'completado' || c.promedio >= 70;
+        return aprobada
+          ? { evId: ev.id, etapaId, estado: 'aprobada', puntaje: c.promedio || 80, fecha: sumarDias(c.ingreso, 6) + ' · registrado', intento: 1 }
+          : { evId: ev.id, etapaId, estado: 'pendiente', puntaje: null, fecha: null, intento: 0 };
+      }).filter(Boolean);
     }
     recalcularColaborador(c);
   });
@@ -512,6 +527,7 @@ function vAdminDashboard() {
   const s = DB.series.cumplimientoSemanal;
 
   return head('dashboard', `
+    <button class="btn" data-act="export">${svg(ICO.down)} Exportar reporte</button>
     <button class="btn btn--primary" data-act="nuevo-col">${svg(ICO.plus)} Registrar colaborador</button>`) + `
 
   <div class="grid g-4">
@@ -647,7 +663,6 @@ function vColaboradores() {
   const lista = S.colaboradores.filter(c =>
     (!f.area || c.area === f.area) && (!f.estado || c.estado === f.estado));
   return head('colaboradores', `
-    <button class="btn" data-act="asignar-masivo">${svg(ICO.file)} Asignación masiva</button>
     <button class="btn btn--primary" data-act="nuevo-col">${svg(ICO.plus)} Registrar colaborador</button>`) + `
 
   <div class="grid g-4">
@@ -690,7 +705,6 @@ function vColaboradores() {
 
 function vDocumentos() {
   return head('documentos', `
-    <button class="btn" data-act="ia-lote">${svg(ICO.spark)} Generar evaluaciones en lote</button>
     <button class="btn btn--primary" data-act="nuevo-doc">${svg(ICO.plus)} Publicar documento</button>`) + `
 
   <div class="grid g-4">
@@ -790,10 +804,10 @@ function vEvaluaciones() {
       <table class="tbl"><thead><tr>
         <th>Evaluación</th><th>Documento</th><th>Preguntas</th><th>Duración</th><th>Mínimo</th><th>Origen</th><th>Publicada</th><th></th>
       </tr></thead><tbody>
-      ${DB.evaluaciones.map(e => { const d = doc(e.docId); return `
+      ${DB.evaluaciones.map(e => { const et = e.etapaId && DB.etapas.find(x => x.id === e.etapaId); const d = e.docId ? doc(e.docId) : null; return `
         <tr>
           <td><b style="font-weight:560">${esc(e.titulo)}</b><br><small class="muted">${e.id}</small></td>
-          <td>${esc(d.titulo)} <span class="tag">v${d.version}</span></td>
+          <td>${et ? `<span class="tag tag--brand">${esc(et.nombre)}</span>` : (d ? `${esc(d.titulo)} <span class="tag">v${d.version}</span>` : '—')}</td>
           <td class="num">${e.preguntas.length}</td>
           <td class="num">${e.minutos} min</td>
           <td class="num">${e.minimo}%</td>
@@ -870,7 +884,7 @@ function vMicro() {
         <div class="card__body">
           <b style="font-size:14px">Información que no puede compartirse con IA</b>
           <p class="small muted mt-8">47% de error en la Política de Uso de IA v1.3, concentrado en Engineering y QA. Se propone una campaña semanal de 3 píldoras durante 4 semanas, dirigida a 186 colaboradores.</p>
-          <button class="btn btn--primary btn--sm mt-8" data-act="nueva-campana">Crear campaña sugerida</button>
+          <button class="btn btn--primary btn--sm mt-8" data-act="nueva-campana" data-doc="DOC-005" data-nombre="Información que no puede compartirse con IA">Crear campaña sugerida</button>
         </div>
       </section>
     </div>
@@ -900,7 +914,7 @@ function vAnalitica() {
             <td class="num">${b.afectados}</td>
             <td style="min-width:150px">${bar(b.error, b.error > 40 ? 'danger' : b.error > 30 ? 'warn' : '')}</td>
             <td>${b.tendencia === 'sube' ? '<span class="trend trend--down">▲ sube</span>' : b.tendencia === 'baja' ? '<span class="trend trend--up">▼ baja</span>' : '<span class="trend trend--flat">■ estable</span>'}</td>
-            <td class="r"><button class="btn btn--sm" data-act="nueva-campana">Reforzar</button></td>
+            <td class="r"><button class="btn btn--sm" data-act="nueva-campana" data-doc="${b.docId}" data-nombre="${esc(b.tema)}">Reforzar</button></td>
           </tr>`).join('')}
         </tbody></table>
       </div>
@@ -925,7 +939,14 @@ function vAnalitica() {
   </div>
 
   <section class="card mt-16">
-
+    <div class="card__head"><div><h3>Comprensión frente a lectura</h3><p>La distancia entre ambas curvas es la brecha real de comprensión</p></div></div>
+    <div class="card__body">
+      ${lineChart(s.labels, [
+        { name:'Lectura', color:'#1F53CE', values:s.lectura },
+        { name:'Comprensión', color:'#E8620F', values:s.evaluacion }
+      ])}
+      <div class="legend"><span><i style="background:#1F53CE"></i>Lectura confirmada</span><span><i style="background:#E8620F"></i>Comprensión verificada</span></div>
+    </div>
   </section>`;
 }
 
@@ -1161,13 +1182,17 @@ function validarColaborador(id) {
   if (!checks.length) { toast('Seleccione al menos un documento', 'No puede activar una ruta sin documentación.', 'warn'); return; }
 
   c.documentosRuta = checks.map((ch, i) => ({
-    docId: ch.dataset.valDoc, estado:'pendiente', confirmado:null,
+    docId: ch.dataset.valDoc, etapaId: doc(ch.dataset.valDoc).etapaId, estado:'pendiente', confirmado:null,
     vence: sumarDias(c.ingreso, 5 + Math.floor(i / 2)),
-    origen: RUTA_BASE.includes(ch.dataset.valDoc) ? 'Ruta base' : 'Agregado por Manager'
+    origen: origenParaDoc(ch.dataset.valDoc)
   }));
-  c.evaluacionesRuta = c.documentosRuta
-    .filter(d => DB.evaluaciones.some(e => e.docId === d.docId))
-    .map(d => ({ evId: DB.evaluaciones.find(e => e.docId === d.docId).id, estado:'bloqueada', puntaje:null, fecha:null, intento:0 }));
+  // Una evaluación por etapa presente en la ruta confirmada (bloqueada hasta leer
+  // todos los documentos de esa etapa).
+  const etapasEnRuta = [...new Set(c.documentosRuta.map(d => d.etapaId).filter(Boolean))];
+  c.evaluacionesRuta = etapasEnRuta.map(etapaId => {
+    const ev = DB.evaluaciones.find(e => e.etapaId === etapaId);
+    return ev ? { evId: ev.id, etapaId, estado:'bloqueada', puntaje:null, fecha:null, intento:0 } : null;
+  }).filter(Boolean);
 
   c.estadoAlta = 'activo';
   c.validadoPor = S.user.nombre;
@@ -1539,7 +1564,11 @@ const msgHTML = (m) => `
 function vCertificados() {
   const ca = colaboradorActivo();
   const items = ca.documentosRuta.filter(d => d.estado === 'leido').map(md => ({ t: doc(md.docId).titulo, v: doc(md.docId).version, f: md.confirmado, tipo: 'Confirmación de lectura' }))
-    .concat(ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').map(me => ({ t: evalu(me.evId).titulo.replace('Evaluación · ', ''), v: doc(evalu(me.evId).docId).version, f: me.fecha, tipo: `Evaluación aprobada · ${me.puntaje}%` })));
+    .concat(ca.evaluacionesRuta.filter(e => e.estado === 'aprobada').map(me => {
+      const ev = evalu(me.evId);
+      const et = ev.etapaId && DB.etapas.find(x => x.id === ev.etapaId);
+      return { t: ev.titulo.replace('Evaluación · ', ''), v: et ? et.nombre : (ev.docId ? doc(ev.docId).version : '—'), f: me.fecha, tipo: `Evaluación aprobada · ${me.puntaje}%` };
+    }));
   return head('certificados', `<button class="btn" data-act="export">${svg(ICO.down)} Descargar constancia</button>`) + `
   <div class="grid g-3">
     ${kpi('Registros de cumplimiento', items.length, 'Con sello de tiempo verificable', '', '')}
@@ -1669,14 +1698,18 @@ function accion(a, btn) {
       toast('Exportación generada', 'El archivo se descargó en formato CSV con sello de tiempo.', 'info'); break;
     case 'nuevo-col': modalNuevoColaborador(); break;
     case 'nuevo-doc': modalNuevoDocumento(); break;
-    case 'ia-generar': modalGenerarIA(); break;
-    case 'ia-lote': modalGenerarIA(true); break;
-    case 'nueva-campana': modalNuevaCampana(); break;
-    case 'asignar-doc':
-    case 'asignar-masivo': S.view = S.user.rol === 'manager' ? 'asignar' : 'documentos'; render(); break;
+    case 'ia-generar': modalGenerarIA(btn && btn.dataset.doc); break;
+    case 'nueva-campana': modalNuevaCampana({ docId: btn && btn.dataset.doc, nombre: btn && btn.dataset.nombre }); break;
+    case 'asignar-doc': S.view = S.user.rol === 'manager' ? 'asignar' : 'documentos'; render(); break;
     case 'confirmar-asignacion': confirmarAsignacion(); break;
     case 'ia-accion':
-      toast('Acción registrada', btn.dataset.txt + ' · la sugerencia pasó a seguimiento.', 'ia'); break;
+      if (btn.dataset.txt === 'Crear campaña') {
+        S.view = 'micro'; render();
+        modalNuevaCampana({ docId: btn.dataset.doc, nombre: btn.dataset.nombre, sugerida: true });
+      } else {
+        toast('Acción registrada', btn.dataset.txt + ' · la sugerencia pasó a seguimiento.', 'ia');
+      }
+      break;
     case 'guardar': toast('Cambios guardados', 'La configuración se aplicará en el próximo ciclo automático.'); break;
     case 'limpiar-chat':
       S.chat = [{ me:false, t:'Conversación reiniciada. ¿Sobre qué documento necesita consultar?' }];
@@ -1723,23 +1756,35 @@ function fichaColaborador(id) {
       </div>
 
       <div class="sec">
-        <div class="sec__t">Documentación asignada (${ruta.length})</div>
-        <div class="doclist">
-          ${ruta.map(md => { const d = doc(md.docId); if (!d) return ''; const evRuta = (c.evaluacionesRuta || []).find(e => { const ev = evalu(e.evId); return ev && ev.docId === md.docId; });
-            let est = '<span class="badge badge--warn">Pendiente</span>';
-            if (md.estado === 'leido') est = evRuta ? (evRuta.estado === 'aprobada' ? '<span class="badge badge--ok">Aprobado</span>' : evRuta.estado === 'bloqueada' ? '<span class="badge badge--info">Leído · evaluación bloqueada</span>' : '<span class="badge badge--warn">Leído · evaluación pendiente</span>') : '<span class="badge badge--ok">Leído</span>';
-            return `<div class="docitem" style="padding:10px 12px">
-            <span class="docitem__ic" style="width:30px;height:34px">${svg(ICO.file)}</span>
-            <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
-              <span class="docitem__m"><span>v${d.version}</span><span>${d.minutos} min</span><span>${esc(md.origen || '')}</span></span></span>
-            <span class="docitem__a">${est}</span>
-          </div>`; }).join('') || '<p class="small muted">Sin documentación asignada todavía.</p>'}
-        </div>
+        <div class="sec__t">Ruta por etapas</div>
+        ${etapasResumen(c).map(et => {
+          const evTxt = !et.evalRuta ? '' :
+            et.evalRuta.estado === 'aprobada' ? `<span class="badge badge--ok">Evaluación aprobada${et.evalRuta.puntaje != null ? ' · ' + et.evalRuta.puntaje + '%' : ''}</span>` :
+            et.evalRuta.estado === 'bloqueada' ? `<span class="badge badge--info">Evaluación bloqueada hasta leer todo</span>` :
+            `<span class="badge badge--warn">Evaluación pendiente</span>`;
+          return `<div class="etapa-card">
+            <div class="etapa-card__h">
+              <b>${esc(et.nombre)}</b>
+              <span class="small muted">${et.leidos}/${et.total} leídos</span>
+              ${evTxt}
+            </div>
+            <div class="doclist">
+              ${et.docs.map(md => { const d = doc(md.docId); if (!d) return '';
+                const est = md.estado === 'leido' ? '<span class="badge badge--ok">Leído</span>' : '<span class="badge badge--warn">Pendiente</span>';
+                return `<div class="docitem" style="padding:8px 12px">
+                  <span class="docitem__ic" style="width:28px;height:32px">${svg(ICO.file)}</span>
+                  <span class="docitem__b"><b style="font-size:12.8px">${esc(d.titulo)}</b>
+                    <span class="docitem__m"><span>${d.paginas} pág.</span><span>${d.minutos} min</span></span></span>
+                  <span class="docitem__a">${est}</span>
+                </div>`; }).join('')}
+            </div>
+          </div>`;
+        }).join('') || '<p class="small muted">Sin documentación asignada todavía.</p>'}
       </div>
 
       ${camp.length ? `<div class="sec">
         <div class="sec__t">Micro evaluaciones periódicas (${camp.length})</div>
-        <p class="small muted" style="margin:0 0 8px">Aunque ya haya terminado su documentación, estas evaluaciones de refuerzo le llegan de forma recurrente y cuentan como "Pendientes" hasta que las responde.</p>
+        <p class="small muted" style="margin:0 0 8px">Aunque ya haya terminado sus etapas, estas evaluaciones de refuerzo le llegan de forma recurrente y cuentan como "Pendientes" hasta que las responde.</p>
         <div class="doclist">
           ${camp.map(cm => `<div class="docitem" style="padding:10px 12px">
             <span class="docitem__ic" style="width:30px;height:34px;background:var(--accent-050);border-color:#F3DFCE;color:var(--accent)">${svg(ICO.spark)}</span>
@@ -1777,6 +1822,8 @@ function fichaColaborador(id) {
 function detalleDocumento(id) {
   const d = doc(id);
   const ev = DB.evaluaciones.find(e => e.docId === id);
+  const evEtapa = !ev && d.etapaId ? DB.evaluaciones.find(e => e.etapaId === d.etapaId) : null;
+  const etapa = d.etapaId && DB.etapas.find(x => x.id === d.etapaId);
   modal(modalHead(d.titulo, `${d.codigo} · versión ${d.version} · propietario ${d.propietario}`) + `
     <div class="modal__body">
       <div class="row wrap" style="gap:8px;margin-bottom:16px">
@@ -1810,6 +1857,13 @@ function detalleDocumento(id) {
               <span class="docitem__m"><span>${ev.preguntas.length} preguntas</span><span>${ev.minutos} min</span><span>Mínimo ${ev.minimo}%</span><span class="tag tag--ai">${esc(ev.generadaPor)}</span></span></span>
             <span class="docitem__a"><button class="btn btn--sm" data-ev-prev="${ev.id}">Previsualizar</button></span>
           </div>`
+        : evEtapa ? `<div class="docitem">
+            <span class="docitem__ic" style="background:var(--brand-050);border-color:#D6E1FB;color:var(--brand)">${svg(ICO.spark)}</span>
+            <span class="docitem__b"><b>${esc(evEtapa.titulo)}</b>
+              <span class="docitem__m"><span>Cubre toda ${esc(etapa.nombre)}</span><span>${evEtapa.preguntas.length} preguntas</span><span>Mínimo ${evEtapa.minimo}%</span></span></span>
+            <span class="docitem__a"><button class="btn btn--sm" data-ev-prev="${evEtapa.id}">Previsualizar</button></span>
+          </div>
+          <p class="small muted" style="margin-top:10px">Este documento no tiene evaluación propia: se evalúa junto con el resto de ${esc(etapa.nombre)} en una sola evaluación. Puede generar una evaluación adicional específica para este documento si lo necesita.</p>`
         : `<div class="empty" style="padding:26px">${svg(ICO.spark)}<b>Sin evaluación publicada</b>Genere una evaluación con IA a partir de este documento.</div>`}
       </div>
     </div>
@@ -1823,7 +1877,7 @@ function detalleDocumento(id) {
 
   bindModal();
   $$('[data-leer]').forEach(b => b.onclick = () => abrirLector(b.dataset.leer));
-  $$('[data-ia-doc]').forEach(b => b.onclick = () => modalGenerarIA(false, b.dataset.iaDoc));
+  $$('[data-ia-doc]').forEach(b => b.onclick = () => modalGenerarIA(b.dataset.iaDoc));
   $$('[data-ev-prev]').forEach(b => b.onclick = () => previsualizarEvaluacion(b.dataset.evPrev));
   $$('[data-act-actualizar]').forEach(b => b.onclick = () => modalActualizarDocumento(b.dataset.actActualizar));
 }
@@ -1833,18 +1887,64 @@ function bindModal() {
 }
 
 /* ------------------------------------------------------------
-   15. Generación de evaluación con IA
+   15. Generación de evaluación con IA (a partir de un documento elegido)
 ------------------------------------------------------------ */
-function modalGenerarIA(lote = false, docId = 'DOC-005') {
-  const d = doc(docId);
+let _genState = null;
+
+function generarPreguntasIA(d, n = 8) {
+  const seed = DB.evaluaciones.find(e => e.docId === d.id);
+  const plantillas = [
+    { q: `Según ${d.titulo}, ¿qué debe hacer un colaborador ante una duda sobre su aplicación?`, o: ['Improvisar una solución propia', 'Consultar al dueño del proceso o a su Manager', 'Ignorar la situación hasta la próxima capacitación', 'Aplicar el criterio de otro colaborador'], r: 1 },
+    { q: `¿Cuál de las siguientes acciones cumple con ${d.titulo}?`, o: ['Aplicarlo solo si el cliente lo solicita', 'Seguir el procedimiento definido, sin excepciones no autorizadas', 'Delegarlo siempre a otra área', 'Aplicarlo únicamente durante auditorías'], r: 1 },
+    { q: `¿Qué puede ocurrir si no se cumple lo indicado en ${d.titulo}?`, o: ['No tiene ninguna consecuencia', 'Puede derivar en un hallazgo o incidente registrado', 'Se resuelve automáticamente con el tiempo', 'Solo afecta al área de Sistemas'], r: 1 },
+    { q: `¿Cada cuánto se recomienda revisar los lineamientos de ${d.titulo}?`, o: ['Nunca, es un documento estático', 'Cuando se publique una nueva versión o exista una duda', 'Solo al momento de ingresar a la empresa', 'Cada cinco años'], r: 1 },
+    { q: `¿Quién es responsable de aplicar ${d.titulo} en el día a día?`, o: ['Únicamente el área legal', 'Cada colaborador dentro de su rol', 'Solo los managers del área', 'Nadie, es solo informativo'], r: 1 },
+    { q: `Un colaborador nuevo pregunta por qué existe ${d.titulo}. ¿Cuál es la mejor respuesta?`, o: ['Porque lo exige un cliente puntual', 'Porque estandariza y protege a la organización y a sus clientes', 'Porque es un trámite administrativo sin impacto real', 'No tiene una razón clara'], r: 1 },
+    { q: `¿Cuál de estas opciones describe mejor una buena práctica relacionada con ${d.titulo}?`, o: ['Registrar evidencia cuando el procedimiento lo exige', 'Evitar dejar registro para agilizar el trabajo', 'Aplicarlo solo si alguien lo supervisa', 'Reemplazarlo por criterio personal'], r: 0 },
+    { q: `¿Qué debería hacer un colaborador que detecta un incumplimiento relacionado con ${d.titulo}?`, o: ['No decir nada para evitar conflictos', 'Reportarlo por el canal correspondiente', 'Resolverlo por su cuenta sin informar', 'Esperar a que alguien más lo note'], r: 1 }
+  ];
+  const base = seed ? seed.preguntas.map(p => ({ ...p, o: [...p.o] })) : [];
+  return [...base, ...plantillas].slice(0, n).map((p, i) => ({ ...p, o: [...p.o], activa: true, exp: p.exp || `Contenido evaluado a partir de ${d.titulo} v${d.version}.` }));
+}
+
+function modalGenerarIA(docId) {
+  _genState = { docId: docId || 'DOC-005', plazo: 8, preguntas: [] };
+  pintarGenPaso1();
+}
+
+function pintarGenPaso1() {
+  modal(modalHead('Generar evaluación con IA', 'Seleccione el documento y el plazo para completarla') + `
+    <div class="modal__body">
+      <div class="grid g-2" style="gap:0 16px">
+        <div class="field"><span class="login__label">Documento</span>
+          <select id="gen-doc" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+            ${S.documentos.map(x => `<option value="${x.id}" ${x.id === _genState.docId ? 'selected' : ''}>${esc(x.titulo)} · v${x.version}</option>`).join('')}
+          </select></div>
+        <div class="field"><span class="login__label">Plazo para completarla (días)</span>
+          <input id="gen-plazo" type="number" min="1" max="30" value="${_genState.plazo}"></div>
+      </div>
+      <p class="small muted mt-8">Se generarán 8 preguntas a partir del contenido del documento. Los colaboradores que ya tienen este documento en su ruta —lo hayan leído o no— recibirán la evaluación; eso se sumará a sus pendientes hasta que la rindan.</p>
+    </div>
+    <div class="modal__foot"><span class="spacer"></span>
+      <button class="btn btn--ghost" data-close>Cancelar</button>
+      <button class="btn btn--primary" id="genNext">Generar con IA</button></div>`, 'modal--wide');
+  bindModal();
+  $('#genNext').onclick = () => {
+    _genState.docId = $('#gen-doc').value;
+    _genState.plazo = Math.max(1, parseInt($('#gen-plazo').value) || 8);
+    iniciarGeneracionIA();
+  };
+}
+
+function iniciarGeneracionIA() {
+  const d = doc(_genState.docId);
   const pasos = [
     'Analizando el documento y segmentando por secciones',
     'Identificando obligaciones, plazos y umbrales evaluables',
     'Redactando preguntas con distractores plausibles',
     'Calibrando la dificultad con el histórico de aciertos'
   ];
-  modal(modalHead(lote ? 'Generar evaluaciones en lote' : 'Generar evaluación con IA',
-    lote ? '4 documentos seleccionados · se creará una evaluación por documento' : `${d.titulo} · versión ${d.version}`) + `
+  modal(modalHead('Generar evaluación con IA', `${d.titulo} · versión ${d.version}`) + `
     <div class="modal__body">
       <ul class="gensteps" id="genSteps">
         ${pasos.map((p, i) => `<li data-i="${i}"><span class="dotmark"></span><span>${p}</span></li>`).join('')}
@@ -1867,36 +1967,65 @@ function modalGenerarIA(lote = false, docId = 'DOC-005') {
       lis[i].innerHTML = `<span class="spin"></span><span>${pasos[i]}</span>`;
       lis[i].classList.add('on');
       i++; setTimeout(avanzar, 780 + Math.random() * 420);
-    } else { mostrarPreguntas(docId); }
+    } else { pintarGenPreguntas(); }
   };
   setTimeout(avanzar, 260);
 }
 
-function mostrarPreguntas(docId) {
-  const ev = DB.evaluaciones.find(e => e.docId === docId) || DB.evaluaciones[1];
+function pintarGenPreguntas() {
+  const d = doc(_genState.docId);
+  _genState.preguntas = generarPreguntasIA(d, 8);
   const out = $('#genOut'); if (!out) return;
   out.classList.remove('hide');
-  $('#genNote').innerHTML = `<span class="ia__badge">${svg(ICO.spark)} ${ev.preguntas.length} preguntas generadas en 3,4 s</span>`;
+  $('#genNote').innerHTML = `<span class="ia__badge">${svg(ICO.spark)} 8 preguntas generadas · plazo ${_genState.plazo} día(s)</span>`;
   $('#genPub').classList.remove('hide');
-  out.innerHTML = `<div class="sec__t">Preguntas propuestas · revise antes de publicar</div>` +
-    ev.preguntas.map((q, n) => `
-      <div class="qgen">
-        <div class="qgen__h">
-          <span class="tag tag--ai">${n + 1}</span>
-          <b>${esc(q.q)}</b>
-          <span class="tag">confianza ${88 + (n % 4) * 3}%</span>
-        </div>
-        <ol type="A">${q.o.map((o, oi) => `<li class="${oi === q.r ? 'ok' : ''}">${esc(o)}${oi === q.r ? ' · correcta' : ''}</li>`).join('')}</ol>
-        <p class="small muted" style="margin:9px 0 0"><b>Justificación:</b> ${esc(q.exp)}</p>
-      </div>`).join('');
+
+  const pintar = () => {
+    out.innerHTML = `<div class="sec__t">Preguntas propuestas · edite el texto o desmarque las que no quiera enviar</div>` +
+      _genState.preguntas.map((q, n) => `
+        <div class="qgen ${q.activa ? '' : 'qgen--off'}">
+          <div class="qgen__h">
+            <label class="row" style="gap:8px"><input type="checkbox" data-q-toggle="${n}" ${q.activa ? 'checked' : ''}><span class="tag tag--ai">${n + 1}</span></label>
+            <input class="qgen__edit" data-q-text="${n}" value="${esc(q.q)}">
+          </div>
+          <ol type="A">${q.o.map((o, oi) => `<li class="${oi === q.r ? 'ok' : ''}"><input class="qgen__edit qgen__edit--op" data-q-op="${n}:${oi}" value="${esc(o)}">${oi === q.r ? ' · correcta' : ''}</li>`).join('')}</ol>
+        </div>`).join('');
+    $$('[data-q-toggle]', out).forEach(cb => cb.onchange = () => { _genState.preguntas[+cb.dataset.qToggle].activa = cb.checked; pintar(); });
+    $$('[data-q-text]', out).forEach(inp => inp.oninput = () => { _genState.preguntas[+inp.dataset.qText].q = inp.value; });
+    $$('[data-q-op]', out).forEach(inp => inp.oninput = () => { const [n, oi] = inp.dataset.qOp.split(':').map(Number); _genState.preguntas[n].o[oi] = inp.value; });
+  };
+  pintar();
 
   $('#genPub').onclick = () => {
+    const seleccionadas = _genState.preguntas.filter(q => q.activa);
+    if (!seleccionadas.length) { toast('Seleccione al menos una pregunta', 'Debe dejar activa al menos una pregunta para publicar la evaluación.', 'warn'); return; }
+    const ev = { id:'EV-' + Date.now(), docId: d.id, titulo:`Evaluación · ${d.titulo}`, minutos:5, minimo:80, intentos:3,
+      generadaPor:'IA · Gemini Pro', fecha: HOY, preguntas: seleccionadas };
+    DB.evaluaciones.push(ev);
+    const nuevos = asignarEvaluacionNueva(ev, _genState.plazo);
     closeModal();
-    toast('Evaluación publicada', `${ev.preguntas.length} preguntas asignadas a ${doc(docId).asignados} colaboradores.`, 'ia');
+    toast('Evaluación publicada', `${seleccionadas.length} preguntas · se asignó a ${nuevos} colaborador(es) con este documento; les subió en 1 sus pendientes.`, 'ia');
     S.notifs.unshift({ id:'N-' + Date.now(), tipo:'actualizacion', titulo:'Evaluación publicada',
-      detalle:`${ev.titulo} quedó disponible en la ruta de aprendizaje.`, destino:'Audiencia del documento', fecha:'2026-09-16 · ahora', estado:'enviada' });
+      detalle:`${ev.titulo} quedó disponible en la ruta de aprendizaje, con ${_genState.plazo} día(s) de plazo.`, destino:'Audiencia del documento', fecha: HOY + ' · ahora', estado:'enviada' });
     render();
   };
+}
+
+/* Asigna una evaluación recién creada a todo colaborador activo que ya tenga
+   el documento en su ruta y que aún no tenga una evaluación de ese documento
+   — sin importar si ya lo leyó o no. Sube "pendientes" en 1 por cada uno. */
+function asignarEvaluacionNueva(ev, plazoDias) {
+  let nuevos = 0;
+  S.colaboradores.forEach(c => {
+    if (c.estadoAlta === 'pendiente_validacion') return;
+    if (!c.documentosRuta.some(x => x.docId === ev.docId)) return;
+    const yaTiene = c.evaluacionesRuta.some(e => { const evx = evalu(e.evId); return evx && evx.docId === ev.docId; });
+    if (yaTiene) return;
+    c.evaluacionesRuta.push({ evId: ev.id, estado:'pendiente', puntaje:null, fecha:null, intento:0, vence: sumarDias(HOY, plazoDias) });
+    recalcularColaborador(c);
+    nuevos++;
+  });
+  return nuevos;
 }
 
 /* ============================================================
@@ -2151,11 +2280,23 @@ function confirmarLectura(docId) {
   if (md) { md.estado = 'leido'; md.confirmado = '2026-09-16 · ahora'; }
   const d = doc(docId); d.leidos = Math.min(d.asignados, d.leidos + 1);
 
-  // habilita todas las evaluaciones asociadas a este documento
-  // (puede haber más de una: la original y la de una actualización posterior)
-  const evsDelDoc = DB.evaluaciones.filter(e => e.docId === docId);
   let habilitoAlguna = false;
-  evsDelDoc.forEach(ev => {
+
+  // Si el documento pertenece a una etapa, la evaluación de esa etapa se habilita
+  // solo cuando TODOS los documentos de la etapa ya están leídos (una evaluación
+  // cubre varios documentos, no uno solo).
+  if (d.etapaId) {
+    const docsEtapa = ca.documentosRuta.filter(m => doc(m.docId) && doc(m.docId).etapaId === d.etapaId);
+    if (docsEtapa.every(m => m.estado === 'leido')) {
+      const evEtapa = DB.evaluaciones.find(e => e.etapaId === d.etapaId);
+      const me = evEtapa && ca.evaluacionesRuta.find(x => x.evId === evEtapa.id);
+      if (me && me.estado === 'bloqueada') { me.estado = 'pendiente'; habilitoAlguna = true; }
+    }
+  }
+
+  // Evaluaciones ad-hoc asignadas específicamente a este documento (fuera de una
+  // etapa): por ejemplo, la micro evaluación generada tras una actualización mayor.
+  DB.evaluaciones.filter(e => e.docId === docId).forEach(ev => {
     const me = ca.evaluacionesRuta.find(x => x.evId === ev.id);
     if (me && me.estado === 'bloqueada') { me.estado = 'pendiente'; habilitoAlguna = true; }
   });
@@ -2246,8 +2387,11 @@ function finalizarQuiz(porTiempo = false) {
   if (me) { me.estado = aprobado ? 'aprobada' : 'reprobada'; me.puntaje = score; me.fecha = '2026-09-16 · ahora'; me.intento++; }
   recalcularColaborador(ca);
 
+  const etapaEv = ev.etapaId && DB.etapas.find(x => x.id === ev.etapaId);
+  const docRef = ev.docId ? doc(ev.docId) : null;
+
   S.evidencias.unshift({ id:'EVD-' + (9100 + S.evidencias.length), colaborador:S.user.nombre,
-    documento:`${doc(ev.docId).titulo} v${doc(ev.docId).version}`,
+    documento: etapaEv ? etapaEv.nombre : (docRef ? `${docRef.titulo} v${docRef.version}` : ev.titulo),
     tipo:aprobado ? 'Evaluación aprobada' : 'Evaluación reprobada', resultado:score + '%',
     fecha:'2026-09-16 · ahora', hash:Math.random().toString(16).slice(2, 6) + '...' + Math.random().toString(16).slice(2, 6) });
 
@@ -2279,7 +2423,7 @@ function finalizarQuiz(porTiempo = false) {
     </div>
     <div class="modal__foot">
       ${!aprobado ? `<button class="btn" id="qRetry">${svg(ICO.refresh)} Reintentar</button>
-                     <button class="btn" data-leer="${ev.docId}">Releer el documento</button>` : ''}
+                     ${docRef ? `<button class="btn" data-leer="${ev.docId}">Releer el documento</button>` : `<button class="btn" data-view-go="misdocs">Releer los documentos de la etapa</button>`}` : ''}
       <span class="spacer"></span>
       <button class="btn btn--primary" data-close>Entendido</button>
     </div>`, 'modal--wide');
@@ -2369,13 +2513,22 @@ function modalNuevoColaborador() {
   const pintarRutaPreview = () => {
     const area = $('#nc-area').value;
     const ids = rutaBaseParaArea(area);
-    $('#nc-ruta-t').textContent = `Ruta propuesta según el área (${ids.length} documentos · el Manager la revisará antes de activarla)`;
-    $('#nc-ruta').innerHTML = ids.map(id => { const d = doc(id); return `
-      <div class="docitem" style="padding:9px 12px">
-        <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:28px;height:32px">${svg(ICO.file)}</span>
-        <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
-          <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
-        <span class="docitem__a"><span class="badge badge--info">Propuesto</span></span></div>`; }).join('');
+    $('#nc-ruta-t').textContent = `Ruta propuesta según el área (${ids.length} documentos en ${new Set(ids.map(i => doc(i).etapaId)).size} etapas · el Manager la revisará antes de activarla)`;
+    const porEtapa = {};
+    ids.forEach(id => { const et = doc(id).etapaId || '—'; (porEtapa[et] = porEtapa[et] || []).push(id); });
+    $('#nc-ruta').innerHTML = Object.keys(porEtapa).map(etapaId => {
+      const et = DB.etapas.find(x => x.id === etapaId);
+      return `<div class="etapa-card">
+        <div class="etapa-card__h"><b>${et ? esc(et.nombre) : 'Otros documentos'}</b><span class="small muted">${porEtapa[etapaId].length} documentos</span></div>
+        <div class="doclist">
+        ${porEtapa[etapaId].map(id => { const d = doc(id); return `
+          <div class="docitem" style="padding:9px 12px">
+            <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:28px;height:32px">${svg(ICO.file)}</span>
+            <span class="docitem__b"><b style="font-size:13px">${esc(d.titulo)}</b>
+              <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
+            <span class="docitem__a"><span class="badge badge--info">Propuesto</span></span></div>`; }).join('')}
+        </div></div>`;
+    }).join('');
     $('#nc-mgr-preview').textContent = $('#nc-manager').value;
   };
   $('#nc-area').onchange = pintarRutaPreview;
@@ -2395,7 +2548,7 @@ function modalNuevoColaborador() {
       id, nombre, cargo, area, manager, ingreso, registradoPor: S.user.nombre,
       estadoAlta:'pendiente_validacion', fase:0, progreso:0, estado:'por_iniciar',
       promedio:0, pendientes:0, ultimaActividad:'Sin actividad', riesgo:'bajo',
-      documentosRuta: rutaBaseParaArea(area).map(docId => ({ docId, estado:'pendiente', confirmado:null, vence:null, origen:'Propuesto' })),
+      documentosRuta: rutaBaseParaArea(area).map(docId => ({ docId, etapaId: doc(docId).etapaId, estado:'pendiente', confirmado:null, vence:null, origen:'Propuesto' })),
       evaluacionesRuta: []
     });
 
@@ -2441,39 +2594,163 @@ function modalNuevoDocumento() {
   };
 }
 
-function modalNuevaCampana() {
-  modal(modalHead('Crear campaña de micro aprendizaje', 'Refuerzo periódico sobre un documento vigente o una brecha detectada') + `
+let _campState = null;
+const PERIODOS = { Diaria: 1, Semanal: 7, Quincenal: 15, Mensual: 30 };
+
+function modalNuevaCampana(prefill = {}) {
+  _campState = {
+    nombre: prefill.nombre || '',
+    docId: prefill.docId || 'DOC-005',
+    cantidad: 6,
+    periodicidad: 'Quincenal',
+    areas: DB.areas.slice(0, 2).map(a => a.id),
+    sugerida: !!prefill.sugerida,
+    evals: [],
+    activo: 0
+  };
+  pintarCampPaso1();
+}
+
+function pintarCampPaso1() {
+  const s = _campState;
+  modal(modalHead('Crear campaña de micro aprendizaje', s.sugerida ? 'Campaña sugerida por la IA a partir de una brecha detectada' : 'Refuerzo periódico sobre un documento vigente o una brecha detectada') + `
     <div class="modal__body">
       <div class="grid g-2" style="gap:0 16px">
-        ${campoF('Nombre de la campaña', 'Ej. Información que no puede compartirse', 'Información que no puede compartirse')}
+        <div class="field"><span class="login__label">Nombre de la campaña</span>
+          <input id="camp-nombre" placeholder="Ej. Información que no puede compartirse" value="${esc(s.nombre)}"></div>
         <div class="field"><span class="login__label">Documento base</span>
-          <select style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">${S.documentos.map(d => `<option ${d.id === 'DOC-005' ? 'selected' : ''}>${d.titulo}</option>`).join('')}</select></div>
+          <select id="camp-doc" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+            ${S.documentos.map(d => `<option value="${d.id}" ${d.id === s.docId ? 'selected' : ''}>${esc(d.titulo)}</option>`).join('')}
+          </select></div>
+        <div class="field"><span class="login__label">Cantidad de evaluaciones</span>
+          <input id="camp-cant" type="number" min="1" max="20" value="${s.cantidad}"></div>
         <div class="field"><span class="login__label">Periodicidad</span>
-          <select style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px"><option>Semanal</option><option>Quincenal</option><option>Mensual</option></select></div>
-        ${campoF('Duración (semanas)', '4', '4')}
+          <select id="camp-per" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
+            ${Object.keys(PERIODOS).map(p => `<option ${p === s.periodicidad ? 'selected' : ''}>${p}</option>`).join('')}
+          </select></div>
       </div>
+      <p class="small muted" id="camp-resumen" style="margin:2px 0 10px"></p>
       <div class="field"><span class="login__label">Audiencia</span>
         <div class="row wrap" style="gap:14px;padding-top:4px">
-          ${DB.areas.map((a, i) => `<label class="row" style="gap:7px;font-size:13.2px"><input type="checkbox" ${i < 2 ? 'checked' : ''}> ${a.nombre}</label>`).join('')}
+          ${DB.areas.map(a => `<label class="row" style="gap:7px;font-size:13.2px"><input type="checkbox" data-area="${a.id}" ${s.areas.includes(a.id) ? 'checked' : ''}> ${esc(a.nombre)}</label>`).join('')}
         </div></div>
       <div class="divider"></div>
       <div class="ia" style="padding:14px 16px">
         <span class="ia__badge">${svg(ICO.spark)} IA</span>
-        <p class="small" style="margin:9px 0 0;color:var(--text-2)">Se generarán 3 píldoras por semana a partir de las secciones con mayor índice de error. La dificultad se ajusta según el desempeño de cada colaborador.</p>
+        <p class="small" style="margin:9px 0 0;color:var(--text-2)">La IA generará una evaluación de 8 preguntas por cada envío, a partir de las secciones con mayor índice de error. En el siguiente paso podrá revisar, editar y deseleccionar preguntas de cada evaluación antes de activar la campaña.</p>
       </div>
     </div>
     <div class="modal__foot"><span class="spacer"></span>
       <button class="btn btn--ghost" data-close>Cancelar</button>
-      <button class="btn btn--primary" id="savCam">Crear y activar</button></div>`, 'modal--wide');
+      <button class="btn btn--primary" id="campNext">Generar evaluaciones con IA →</button></div>`, 'modal--wide');
   bindModal();
-  $('#savCam').onclick = () => {
-    S.campanas.unshift({ id:'MA-' + (27 + S.campanas.length), nombre:'Información que no puede compartirse',
-      enfoque:'Refuerzo de brecha', docId:'DOC-005', periodicidad:'Semanal', audiencia:'Engineering, Quality Control',
-      alcance:186, respuesta:0, acierto:0, estado:'activa', proxima:'2026-09-18' });
-    closeModal();
-    toast('Campaña activada', '186 colaboradores recibirán la primera píldora el viernes.', 'ia');
-    render();
+  const resumen = () => {
+    const cant = Math.max(1, parseInt($('#camp-cant').value) || 1);
+    const per = $('#camp-per').value;
+    $('#camp-resumen').textContent = `Se enviará 1 evaluación cada envío ${per.toLowerCase()} (cada ${PERIODOS[per]} día(s)) — ${cant} evaluaciones en total.`;
   };
+  $('#camp-cant').oninput = resumen; $('#camp-per').onchange = resumen; resumen();
+  $('#campNext').onclick = () => {
+    s.nombre = $('#camp-nombre').value.trim() || 'Campaña de micro aprendizaje';
+    s.docId = $('#camp-doc').value;
+    s.cantidad = Math.max(1, Math.min(20, parseInt($('#camp-cant').value) || 1));
+    s.periodicidad = $('#camp-per').value;
+    s.areas = $$('[data-area]', $('#modal')).filter(c => c.checked).map(c => c.dataset.area);
+    if (!s.areas.length) { toast('Seleccione al menos un área', 'La campaña necesita una audiencia.', 'warn'); return; }
+    iniciarGeneracionCampana();
+  };
+}
+
+function iniciarGeneracionCampana() {
+  const s = _campState;
+  const d = doc(s.docId);
+  const pasos = ['Analizando el documento y las secciones con mayor error', `Redactando ${s.cantidad} evaluaciones de 8 preguntas cada una`, 'Distribuyendo las evaluaciones según la periodicidad elegida'];
+  modal(modalHead('Generando la campaña con IA', `${d.titulo} · ${s.cantidad} evaluaciones · ${s.periodicidad.toLowerCase()}`) + `
+    <div class="modal__body">
+      <ul class="gensteps" id="genSteps">${pasos.map((p, i) => `<li data-i="${i}"><span class="dotmark"></span><span>${p}</span></li>`).join('')}</ul>
+    </div>
+    <div class="modal__foot"><span class="small muted">Este proceso toma unos segundos.</span><span class="spacer"></span><button class="btn btn--ghost" data-close>Cancelar</button></div>`, 'modal--wide');
+  bindModal();
+  let i = 0;
+  const lis = $$('#genSteps li');
+  const avanzar = () => {
+    if (i > 0) { lis[i - 1].innerHTML = `<span class="tick">${svg('<path d="M20 6 9 17l-5-5"/>')}</span><span>${pasos[i - 1]}</span>`; lis[i - 1].classList.add('done'); }
+    if (i < lis.length) { lis[i].innerHTML = `<span class="spin"></span><span>${pasos[i]}</span>`; lis[i].classList.add('on'); i++; setTimeout(avanzar, 650 + Math.random() * 350); }
+    else pintarCampPaso2();
+  };
+  setTimeout(avanzar, 220);
+}
+
+function pintarCampPaso2() {
+  const s = _campState;
+  const d = doc(s.docId);
+  if (!s.evals.length) {
+    s.evals = Array.from({ length: s.cantidad }, (_, i) => ({
+      fecha: sumarDias(HOY, PERIODOS[s.periodicidad] * (i + 1)),
+      preguntas: generarPreguntasIA(d, 8)
+    }));
+  }
+  s.activo = 0;
+  renderCampPaso2();
+}
+
+function renderCampPaso2() {
+  const s = _campState;
+  const d = doc(s.docId);
+  modal(modalHead(s.nombre, `${s.cantidad} evaluaciones · cada ${PERIODOS[s.periodicidad]} día(s) · ${d.titulo}`) + `
+    <div class="modal__body">
+      <div class="row wrap" style="gap:8px" id="camp-chips">
+        ${s.evals.map((e, i) => `<button class="tag ${i === s.activo ? 'tag--ai' : ''}" data-camp-ev="${i}">Evaluación ${i + 1} · ${fechaLarga(e.fecha)} · ${e.preguntas.filter(q => q.activa).length}/8</button>`).join('')}
+      </div>
+      <div class="divider"></div>
+      <div id="camp-out"></div>
+    </div>
+    <div class="modal__foot">
+      <span class="small muted">Edite el texto, las opciones o desmarque preguntas de la evaluación seleccionada.</span>
+      <span class="spacer"></span>
+      <button class="btn btn--ghost" data-close>Cancelar</button>
+      <button class="btn btn--primary" id="campPub">Crear y activar campaña</button></div>`, 'modal--wide');
+  bindModal();
+  $$('[data-camp-ev]', $('#modal')).forEach(b => b.onclick = () => { s.activo = +b.dataset.campEv; renderCampPaso2(); });
+  pintarCampPreguntas();
+  $('#campPub').onclick = () => publicarCampana();
+}
+
+function pintarCampPreguntas() {
+  const s = _campState;
+  const out = $('#camp-out'); if (!out) return;
+  const ev = s.evals[s.activo];
+  const pintar = () => {
+    out.innerHTML = ev.preguntas.map((q, n) => `
+      <div class="qgen ${q.activa ? '' : 'qgen--off'}">
+        <div class="qgen__h">
+          <label class="row" style="gap:8px"><input type="checkbox" data-cq-toggle="${n}" ${q.activa ? 'checked' : ''}><span class="tag tag--ai">${n + 1}</span></label>
+          <input class="qgen__edit" data-cq-text="${n}" value="${esc(q.q)}">
+        </div>
+        <ol type="A">${q.o.map((o, oi) => `<li class="${oi === q.r ? 'ok' : ''}"><input class="qgen__edit qgen__edit--op" data-cq-op="${n}:${oi}" value="${esc(o)}">${oi === q.r ? ' · correcta' : ''}</li>`).join('')}</ol>
+      </div>`).join('');
+    $$('[data-cq-toggle]', out).forEach(cb => cb.onchange = () => { ev.preguntas[+cb.dataset.cqToggle].activa = cb.checked; renderCampPaso2(); });
+    $$('[data-cq-text]', out).forEach(inp => inp.oninput = () => { ev.preguntas[+inp.dataset.cqText].q = inp.value; });
+    $$('[data-cq-op]', out).forEach(inp => inp.oninput = () => { const [n, oi] = inp.dataset.cqOp.split(':').map(Number); ev.preguntas[n].o[oi] = inp.value; });
+  };
+  pintar();
+}
+
+function publicarCampana() {
+  const s = _campState;
+  const vacias = s.evals.some(e => !e.preguntas.some(q => q.activa));
+  if (vacias) { toast('Revise las evaluaciones', 'Cada evaluación necesita al menos una pregunta activa.', 'warn'); return; }
+  const audiencia = s.areas.map(id => areaNom(id)).join(', ');
+  const alcance = S.colaboradores.filter(c => s.areas.includes(c.area)).length;
+  S.campanas.unshift({
+    id: 'MA-' + Date.now(), nombre: s.nombre, enfoque: s.sugerida ? 'Refuerzo de brecha' : 'Campaña manual',
+    docId: s.docId, periodicidad: s.periodicidad, audiencia, alcance, respuesta: 0, acierto: 0,
+    estado: 'activa', proxima: s.evals[0].fecha, cantidadEvaluaciones: s.cantidad,
+    evaluaciones: s.evals.map((e, i) => ({ n: i + 1, fecha: e.fecha, preguntas: e.preguntas.filter(q => q.activa) }))
+  });
+  closeModal();
+  toast('Campaña activada', `${alcance} colaborador(es) recibirán la primera evaluación el ${fechaLarga(s.evals[0].fecha)}.`, 'ia');
+  render();
 }
 
 function confirmarAsignacion() {
