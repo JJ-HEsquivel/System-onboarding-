@@ -19,218 +19,225 @@ const DB = (() => {
 
   const categorias = [
     'Seguridad de la Información',
-    'Recursos Humanos',
-    'Calidad y Procesos',
-    'Legal y Cumplimiento',
-    'Operaciones',
-    'Salud y Seguridad'
+    'Gestión de Activos y TI',
+    'Datos y Privacidad',
+    'Ingeniería',
+    'Compras y Activos Fijos'
   ];
+
+  /* ---------- Etapas del programa de inducción ----------
+     Estructura real tomada del programa "Bienvenido al Programa de
+     Inducción y Lectura de Políticas Corporativas": el colaborador
+     avanza por etapas; cada etapa agrupa varios documentos de lectura
+     obligatoria y se cierra con UNA sola evaluación que cubre todos
+     los documentos de esa etapa (no una evaluación por documento).
+     alcance 'general' = aplica a todas las áreas.
+     alcance 'area'    = solo a las áreas listadas en `areas`. */
+  const etapas = [
+    { id: 'ETP-1',     nombre: 'Etapa 1 · Políticas Fundamentales',            orden: 1, plazoDiasHabiles: 5, alcance: 'general', areas: null },
+    { id: 'ETP-2',     nombre: 'Etapa 2 · Políticas Fundamentales',            orden: 2, plazoDiasHabiles: 5, alcance: 'general', areas: null },
+    { id: 'ETP-3-ING', nombre: 'Etapa 3 · Documentación específica: Ingeniería',     orden: 3, plazoDiasHabiles: 5, alcance: 'area', areas: ['ENG'] },
+    { id: 'ETP-3-ADM', nombre: 'Etapa 3 · Documentación específica: Administrativos', orden: 3, plazoDiasHabiles: 5, alcance: 'area', areas: ['QA', 'PMO', 'HR', 'FIN', 'IT'] }
+  ];
+
+  const TODAS_AREAS = ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'];
 
   /* ---------- Documentos ---------- */
   // criticidad: alta | media | baja
-  // estado: vigente | actualizado | en revision
+  // estado: vigente | actualizado | borrador
+  // etapaId: a qué etapa del programa de inducción pertenece
   const documentos = [
     {
-      id: 'DOC-001', codigo: 'POL-SEG-001', titulo: 'Política de Seguridad de la Información',
-      categoria: 'Seguridad de la Información', version: '4.2', criticidad: 'alta', estado: 'actualizado',
-      actualizado: '2026-09-02', propietario: 'Marcelo Antezana', paginas: 18, minutos: 22,
-      areas: ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true,
-      asignados: 248, leidos: 231, indiceError: 34, intentos: 412,
-      resumen: 'Define los lineamientos corporativos para proteger la confidencialidad, integridad y disponibilidad de la información de Jalasoft y de sus clientes.',
+      id: 'DOC-001', codigo: 'POL-TI-001', titulo: 'BYOD Computadores - Política (ESP-ENG)',
+      etapaId: 'ETP-1', categoria: 'Gestión de Activos y TI', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 3, minutos: 8,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 231, indiceError: 22, intentos: 260,
+      resumen: 'Condiciones para usar equipos personales (Bring Your Own Device) en actividades laborales, cifrado mínimo requerido y responsabilidades del colaborador sobre el equipo.',
       secciones: [
-        { t: '1. Objetivo', p: 'Establecer los principios y controles que todo colaborador debe aplicar para proteger la información de la organización, de sus clientes y de terceros, en cualquier formato o medio en el que se encuentre.' },
-        { t: '2. Alcance', p: 'Aplica a todos los colaboradores, contratistas, practicantes y proveedores que accedan a activos de información de Jalasoft, sin importar su ubicación física o modalidad de trabajo.' },
-        { t: '3. Clasificación de la información', p: 'La información se clasifica en cuatro niveles: Pública, Interna, Confidencial y Restringida. Todo documento debe llevar su etiqueta de clasificación visible en el encabezado. La información Restringida solo puede compartirse mediante canales cifrados y con autorización expresa del propietario del activo.' },
-        { t: '4. Gestión de credenciales', p: 'Las contraseñas deben tener al menos 14 caracteres, combinar mayúsculas, minúsculas, números y símbolos, y renovarse cada 90 días. El uso del gestor corporativo de contraseñas es obligatorio. Está prohibido compartir credenciales entre colaboradores, incluso de forma temporal.' },
-        { t: '5. Segundo factor de autenticación', p: 'El doble factor (MFA) es obligatorio para el correo corporativo, la VPN, los repositorios de código y cualquier consola de administración en la nube. La pérdida del dispositivo de segundo factor debe reportarse dentro de las 2 horas siguientes.' },
-        { t: '6. Escritorio y pantalla limpios', p: 'Al ausentarse del puesto de trabajo, la estación debe bloquearse. Los documentos impresos con clasificación Confidencial o Restringida no pueden permanecer sobre el escritorio fuera del horario laboral.' },
-        { t: '7. Reporte de incidentes', p: 'Todo incidente o sospecha de incidente de seguridad debe reportarse al canal security@jalasoft.com dentro de las primeras 24 horas de detectado. El reporte oportuno nunca será motivo de sanción; la omisión sí.' },
-        { t: '8. Uso aceptable de activos', p: 'Los equipos entregados por la organización son para uso laboral. Está prohibido instalar software sin licencia, deshabilitar el antivirus o conectar dispositivos de almacenamiento no autorizados.' },
-        { t: '9. Incumplimiento', p: 'El incumplimiento de esta política puede derivar en medidas disciplinarias conforme al Reglamento Interno de Trabajo y, según la gravedad, en acciones legales.' }
+        { t: '1. Alcance', p: 'Aplica a todo colaborador que utilice una computadora personal para conectarse a sistemas o datos de la organización.' },
+        { t: '2. Requisitos mínimos', p: 'El equipo debe contar con cifrado de disco, antivirus actualizado y bloqueo automático de pantalla antes de conectarse a cualquier recurso corporativo.' }
       ],
-      cambios: [
-        { v: '4.2', fecha: '2026-09-02', nivel: 'mayor', detalle: 'Se incorpora MFA obligatorio para consolas cloud y se reduce a 2 horas el plazo de reporte por pérdida del segundo factor.' },
-        { v: '4.1', fecha: '2026-04-18', nivel: 'menor', detalle: 'Ajuste de redacción en la sección de clasificación de la información.' },
-        { v: '4.0', fecha: '2025-11-05', nivel: 'mayor', detalle: 'Se eleva la longitud mínima de contraseña de 10 a 14 caracteres.' }
-      ]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-002', codigo: 'POL-RH-014', titulo: 'Reglamento Interno de Trabajo',
-      categoria: 'Recursos Humanos', version: '3.0', criticidad: 'alta', estado: 'vigente',
-      actualizado: '2026-06-20', propietario: 'Lorena Vargas', paginas: 26, minutos: 30,
-      areas: ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true,
-      asignados: 248, leidos: 244, indiceError: 12, intentos: 396,
-      resumen: 'Regula la relación laboral, los horarios, permisos, licencias y el régimen disciplinario aplicable a todos los colaboradores.',
+      id: 'DOC-002', codigo: 'POL-TI-002', titulo: 'BYOD Tablets y dispositivos móviles - Política (ESP-ENG)',
+      etapaId: 'ETP-1', categoria: 'Gestión de Activos y TI', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 1, minutos: 4,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 233, indiceError: 19, intentos: 255,
+      resumen: 'Extiende los lineamientos de BYOD a tablets y dispositivos móviles personales usados para correo, chat o acceso a sistemas corporativos.',
       secciones: [
-        { t: '1. Jornada laboral', p: 'La jornada ordinaria es de 8 horas diarias con flexibilidad de ingreso entre 07:30 y 09:30, respetando la franja de colaboración de 10:00 a 16:00 en la que todo el equipo debe estar disponible.' },
-        { t: '2. Registro de asistencia', p: 'El registro se realiza en la plataforma corporativa. La omisión reiterada del registro se considera falta leve y se notifica al Manager directo.' },
-        { t: '3. Permisos y licencias', p: 'Las solicitudes de permiso deben ingresarse con al menos 48 horas de anticipación, salvo emergencias médicas debidamente justificadas dentro de las 24 horas posteriores.' },
-        { t: '4. Vacaciones', p: 'El colaborador acumula días de vacación conforme a la normativa vigente. La programación se acuerda con el Manager y no puede postergarse más de dos gestiones consecutivas.' },
-        { t: '5. Trabajo remoto', p: 'La modalidad híbrida requiere al menos dos días presenciales por semana en las oficinas asignadas, salvo acuerdo contractual distinto.' },
-        { t: '6. Régimen disciplinario', p: 'Las faltas se clasifican en leves, graves y muy graves. Toda medida disciplinaria se comunica por escrito y queda registrada en el legajo del colaborador.' }
+        { t: '1. Dispositivos cubiertos', p: 'Tablets y smartphones personales usados para correo corporativo, aplicaciones de mensajería de trabajo o MFA.' },
+        { t: '2. Medidas obligatorias', p: 'PIN o biometría activados, actualización del sistema operativo al día y posibilidad de borrado remoto en caso de pérdida o robo.' }
       ],
-      cambios: [
-        { v: '3.0', fecha: '2026-06-20', nivel: 'mayor', detalle: 'Se formaliza la franja de colaboración 10:00–16:00 y el mínimo de dos días presenciales.' }
-      ]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-003', codigo: 'POL-ETI-002', titulo: 'Código de Ética y Conducta',
-      categoria: 'Legal y Cumplimiento', version: '2.5', criticidad: 'alta', estado: 'vigente',
-      actualizado: '2026-03-11', propietario: 'Andrés Claros', paginas: 14, minutos: 18,
-      areas: ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true,
-      asignados: 248, leidos: 240, indiceError: 19, intentos: 358,
-      resumen: 'Establece los principios de integridad, transparencia y respeto que rigen la conducta de todos los colaboradores dentro y fuera de la organización.',
+      id: 'DOC-003', codigo: 'POL-TI-003', titulo: 'Control de Software y Hardware - Política (ESP-ENG)',
+      etapaId: 'ETP-1', categoria: 'Gestión de Activos y TI', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 2, minutos: 6,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 227, indiceError: 24, intentos: 249,
+      resumen: 'Reglas para la instalación, licenciamiento e inventario del software y hardware entregado o autorizado por la organización.',
       secciones: [
-        { t: '1. Principios rectores', p: 'Integridad, respeto, transparencia, responsabilidad y compromiso con el cliente son los cinco principios que orientan toda decisión profesional dentro de la organización.' },
-        { t: '2. Conflicto de intereses', p: 'Todo colaborador debe declarar cualquier situación que pueda comprometer su objetividad, incluyendo relaciones comerciales o familiares con proveedores, clientes o competidores.' },
-        { t: '3. Antisoborno y regalos', p: 'No se aceptan regalos, invitaciones o beneficios cuyo valor supere los USD 50 o que puedan interpretarse como una forma de influir en una decisión comercial.' },
-        { t: '4. Canal de denuncias', p: 'El canal ética@jalasoft.com garantiza confidencialidad y no represalias. Las denuncias pueden presentarse de forma anónima y son investigadas por el Comité de Ética.' },
-        { t: '5. Respeto y no discriminación', p: 'Se prohíbe toda forma de acoso, discriminación o trato degradante por razones de género, origen, religión, orientación, edad o discapacidad.' }
+        { t: '1. Instalación de software', p: 'Solo puede instalarse software aprobado por IT; cualquier excepción requiere solicitud formal y justificación.' },
+        { t: '2. Inventario de hardware', p: 'Todo equipo asignado queda registrado a nombre del colaborador y debe devolverse en las condiciones entregadas al finalizar la relación laboral.' }
       ],
-      cambios: [
-        { v: '2.5', fecha: '2026-03-11', nivel: 'menor', detalle: 'Actualización del umbral de regalos y del procedimiento de denuncia anónima.' }
-      ]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-004', codigo: 'PRO-CAL-007', titulo: 'Procedimiento de Control de Calidad de Entregables',
-      categoria: 'Calidad y Procesos', version: '5.1', criticidad: 'alta', estado: 'en revision',
-      actualizado: '2026-08-28', propietario: 'Gabriela Rocha', paginas: 21, minutos: 25,
-      areas: ['ENG', 'QA', 'PMO'], obligatorio: true,
-      asignados: 164, leidos: 141, indiceError: 41, intentos: 288,
-      resumen: 'Define las etapas de verificación, criterios de aceptación y registros obligatorios para la liberación de entregables a cliente.',
+      id: 'DOC-004', codigo: 'POL-SEG-004', titulo: 'Etiquetado de Datos e Información - Política',
+      etapaId: 'ETP-1', categoria: 'Seguridad de la Información', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 4, minutos: 10,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 219, indiceError: 28, intentos: 244,
+      resumen: 'Define cómo clasificar y etiquetar documentos e información según su nivel de sensibilidad, para que cualquier persona sepa cómo debe tratarlos.',
       secciones: [
-        { t: '1. Etapas de control', p: 'Todo entregable atraviesa cuatro etapas: revisión por pares, validación funcional, verificación de criterios de aceptación y aprobación formal del Quality Lead.' },
-        { t: '2. Criterios de aceptación', p: 'Un entregable solo se libera si cumple el 100% de los criterios acordados con el cliente y no registra defectos de severidad crítica o alta abiertos.' },
-        { t: '3. Registro de evidencias', p: 'Cada etapa genera evidencia trazable: acta de revisión, reporte de pruebas y checklist firmado. Las evidencias se conservan por 36 meses.' },
-        { t: '4. Defectos y reproceso', p: 'Un defecto crítico detectado después de la liberación activa el procedimiento de acción correctiva dentro de las 48 horas siguientes.' },
-        { t: '5. Indicadores', p: 'Se monitorean tres indicadores: densidad de defectos, tasa de reproceso y cumplimiento de fechas comprometidas.' }
+        { t: '1. Niveles de clasificación', p: 'La información se clasifica en Pública, Interna, Confidencial y Restringida, y debe llevar la etiqueta visible en el encabezado del documento.' },
+        { t: '2. Responsabilidad del etiquetado', p: 'Quien crea o recibe un documento es responsable de clasificarlo correctamente antes de compartirlo, incluso internamente.' }
       ],
-      cambios: [
-        { v: '5.1', fecha: '2026-08-28', nivel: 'mayor', detalle: 'Se agrega la verificación obligatoria de criterios de aceptación como etapa independiente y se define el plazo de 48 horas para acción correctiva.' },
-        { v: '5.0', fecha: '2026-01-22', nivel: 'mayor', detalle: 'Reestructuración completa del procedimiento en cuatro etapas.' }
-      ]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-005', codigo: 'POL-SEG-009', titulo: 'Política de Uso de Inteligencia Artificial',
-      categoria: 'Seguridad de la Información', version: '1.3', criticidad: 'alta', estado: 'actualizado',
-      actualizado: '2026-09-08', propietario: 'Marcelo Antezana', paginas: 11, minutos: 14,
-      areas: ['ENG', 'QA', 'PMO', 'IT'], obligatorio: true,
-      asignados: 186, leidos: 122, indiceError: 47, intentos: 174,
-      resumen: 'Regula el uso de herramientas de inteligencia artificial generativa en proyectos internos y de cliente.',
+      id: 'DOC-005', codigo: 'POL-OPS-005', titulo: 'Uso correcto de bienes y servicios de la organización - Política',
+      etapaId: 'ETP-1', categoria: 'Gestión de Activos y TI', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 5, minutos: 12,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 221, indiceError: 20, intentos: 238,
+      resumen: 'Establece el uso adecuado de los bienes, herramientas y servicios provistos por la organización para fines laborales.',
       secciones: [
-        { t: '1. Herramientas autorizadas', p: 'Solo pueden utilizarse las herramientas listadas en el catálogo corporativo de IA. El uso de cuentas personales para tareas laborales está prohibido.' },
-        { t: '2. Información que no puede compartirse', p: 'Queda prohibido ingresar en herramientas de IA: código fuente de cliente bajo NDA, datos personales, credenciales, información financiera no pública y documentación clasificada como Restringida.' },
-        { t: '3. Revisión humana', p: 'Todo resultado generado por IA que se incorpore a un entregable debe ser revisado y validado por un colaborador responsable. La IA no sustituye la responsabilidad profesional.' },
-        { t: '4. Trazabilidad', p: 'Debe declararse el uso de IA en los entregables cuando el contrato con el cliente así lo exija.' },
-        { t: '5. Propiedad intelectual', p: 'El contenido generado con asistencia de IA se rige por las mismas cláusulas de propiedad intelectual que cualquier otro entregable del proyecto.' }
+        { t: '1. Uso previsto', p: 'Los bienes y servicios entregados son para uso laboral; el uso personal ocasional debe ser razonable y no interferir con el trabajo.' },
+        { t: '2. Uso indebido', p: 'El uso indebido reiterado de bienes o servicios corporativos puede derivar en medidas disciplinarias.' }
       ],
-      cambios: [
-        { v: '1.3', fecha: '2026-09-08', nivel: 'mayor', detalle: 'Se prohíbe explícitamente el uso de cuentas personales y se incorpora la obligación de declarar el uso de IA ante el cliente.' },
-        { v: '1.2', fecha: '2026-05-30', nivel: 'menor', detalle: 'Ampliación del catálogo de herramientas autorizadas.' }
-      ]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-006', codigo: 'PRO-OPE-011', titulo: 'Procedimiento de Gestión de Accesos',
-      categoria: 'Operaciones', version: '2.8', criticidad: 'media', estado: 'vigente',
-      actualizado: '2026-07-14', propietario: 'Ruth Peñaranda', paginas: 9, minutos: 12,
-      areas: ['IT', 'ENG', 'QA'], obligatorio: true,
-      asignados: 152, leidos: 139, indiceError: 22, intentos: 241,
-      resumen: 'Describe el ciclo de alta, modificación y baja de accesos a sistemas corporativos y de cliente.',
+      id: 'DOC-006', codigo: 'POL-TI-006', titulo: 'Software permitido - Política (ESP - ENG)',
+      etapaId: 'ETP-1', categoria: 'Gestión de Activos y TI', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 2, minutos: 6,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 226, indiceError: 18, intentos: 240,
+      resumen: 'Lista y criterios del software autorizado para uso en equipos corporativos, y el procedimiento para solicitar software no incluido en el catálogo.',
       secciones: [
-        { t: '1. Solicitud de acceso', p: 'Todo acceso se solicita mediante ticket, con aprobación del Manager y del propietario del sistema. No existen accesos concedidos verbalmente.' },
-        { t: '2. Principio de mínimo privilegio', p: 'Se otorga únicamente el nivel de acceso necesario para ejecutar las funciones del rol. Los accesos administrativos requieren justificación adicional.' },
-        { t: '3. Revisión periódica', p: 'Cada trimestre se ejecuta una revisión de accesos. Los accesos sin uso durante 60 días se revocan automáticamente.' },
-        { t: '4. Baja de colaboradores', p: 'La revocación de accesos se ejecuta el mismo día de la desvinculación, antes del cierre de la jornada.' }
+        { t: '1. Catálogo autorizado', p: 'El catálogo de software permitido se publica y actualiza por IT; solo ese software puede instalarse sin aprobación adicional.' },
+        { t: '2. Solicitud de excepciones', p: 'Cualquier software fuera del catálogo requiere solicitud formal con justificación de negocio y aprobación de IT.' }
       ],
-      cambios: [{ v: '2.8', fecha: '2026-07-14', nivel: 'menor', detalle: 'Se reduce de 90 a 60 días el umbral de revocación automática.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-007', codigo: 'POL-SSO-003', titulo: 'Política de Salud y Seguridad Ocupacional',
-      categoria: 'Salud y Seguridad', version: '1.9', criticidad: 'media', estado: 'vigente',
-      actualizado: '2026-02-09', propietario: 'Lorena Vargas', paginas: 12, minutos: 15,
-      areas: ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true,
-      asignados: 248, leidos: 229, indiceError: 15, intentos: 302,
-      resumen: 'Establece las medidas de prevención, evacuación y ergonomía aplicables en las instalaciones de la organización.',
+      id: 'DOC-007', codigo: 'POL-SEG-007', titulo: 'Seguridad de la Información - Política (ESP - ENG)',
+      etapaId: 'ETP-1', categoria: 'Seguridad de la Información', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-01', propietario: 'Enterprise Information Security', paginas: 3, minutos: 8,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 236, indiceError: 25, intentos: 258,
+      resumen: 'Principios generales de seguridad de la información: confidencialidad, integridad y disponibilidad, y el canal para reportar incidentes.',
       secciones: [
-        { t: '1. Rutas de evacuación', p: 'Cada piso cuenta con dos rutas señalizadas y un punto de encuentro externo. Los simulacros se realizan semestralmente y la participación es obligatoria.' },
-        { t: '2. Ergonomía', p: 'La pantalla debe ubicarse a la altura de los ojos y a un brazo de distancia. Se recomienda una pausa activa de 5 minutos por cada hora de trabajo continuo.' },
-        { t: '3. Reporte de accidentes', p: 'Todo accidente o incidente debe reportarse al área de People & Culture dentro de las 24 horas, incluso si no hubo lesión.' },
-        { t: '4. Brigadas', p: 'Las brigadas de primeros auxilios, evacuación y contra incendios están identificadas con distintivo visible en cada piso.' }
+        { t: '1. Principios', p: 'Toda la información de la organización y de sus clientes debe protegerse en confidencialidad, integridad y disponibilidad.' },
+        { t: '2. Reporte de incidentes', p: 'Todo incidente o sospecha de incidente se reporta al canal de seguridad dentro de las 24 horas siguientes a su detección; el reporte oportuno no es motivo de sanción.' }
       ],
-      cambios: [{ v: '1.9', fecha: '2026-02-09', nivel: 'menor', detalle: 'Actualización de los puntos de encuentro por remodelación del edificio.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-008', codigo: 'POL-LEG-005', titulo: 'Acuerdo de Confidencialidad y Manejo de NDA',
-      categoria: 'Legal y Cumplimiento', version: '3.4', criticidad: 'alta', estado: 'vigente',
-      actualizado: '2026-05-16', propietario: 'Andrés Claros', paginas: 8, minutos: 10,
-      areas: ['ENG', 'QA', 'PMO', 'FIN'], obligatorio: true,
-      asignados: 201, leidos: 195, indiceError: 26, intentos: 289,
-      resumen: 'Detalla las obligaciones de confidencialidad frente a clientes y el tratamiento de información sujeta a NDA.',
+      id: 'DOC-008', codigo: 'POL-DAT-008', titulo: 'Inteligencia Artificial - Política (ESP-ENG)',
+      etapaId: 'ETP-2', categoria: 'Datos y Privacidad', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-15', propietario: 'Enterprise Information Security', paginas: 3, minutos: 8,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 184, indiceError: 47, intentos: 233,
+      resumen: 'Qué herramientas de IA están autorizadas, qué información no puede ingresarse en ellas y cómo debe revisarse el contenido que generan.',
       secciones: [
-        { t: '1. Alcance de la confidencialidad', p: 'La obligación de confidencialidad se mantiene vigente durante la relación laboral y por cinco años posteriores a su finalización.' },
-        { t: '2. Información de cliente', p: 'El código fuente, la documentación técnica y los datos de negocio del cliente no pueden almacenarse en repositorios personales ni en servicios no autorizados.' },
-        { t: '3. Publicaciones y redes sociales', p: 'No se puede mencionar el nombre del cliente, mostrar capturas de sus sistemas ni divulgar detalles del proyecto sin autorización escrita.' },
-        { t: '4. Devolución de información', p: 'Al finalizar el proyecto o la relación laboral, toda la información del cliente debe devolverse o eliminarse de forma verificable.' }
+        { t: '1. Herramientas autorizadas', p: 'Solo pueden usarse herramientas de IA del catálogo corporativo, con cuenta corporativa; está prohibido el uso de cuentas personales para tareas laborales.' },
+        { t: '2. Información que no puede compartirse', p: 'Nunca debe ingresarse código de cliente bajo NDA, datos personales, credenciales ni información clasificada como Confidencial o Restringida en una herramienta de IA.' }
       ],
-      cambios: [{ v: '3.4', fecha: '2026-05-16', nivel: 'menor', detalle: 'Precisión sobre el uso de capturas de pantalla en redes sociales.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-15', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-009', codigo: 'PRO-CAL-012', titulo: 'Gestión de No Conformidades y Acciones Correctivas',
-      categoria: 'Calidad y Procesos', version: '2.2', criticidad: 'media', estado: 'vigente',
-      actualizado: '2026-04-03', propietario: 'Gabriela Rocha', paginas: 15, minutos: 19,
-      areas: ['QA', 'PMO'], obligatorio: false,
-      asignados: 78, leidos: 64, indiceError: 38, intentos: 121,
-      resumen: 'Procedimiento para registrar, analizar y cerrar no conformidades detectadas en auditorías internas o externas.',
+      id: 'DOC-009', codigo: 'POL-SEG-009', titulo: 'Protección de Contraseñas - Política (ESP - ENG)',
+      etapaId: 'ETP-2', categoria: 'Seguridad de la Información', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-15', propietario: 'Enterprise Information Security', paginas: 1, minutos: 4,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 201, indiceError: 31, intentos: 226,
+      resumen: 'Requisitos mínimos de las contraseñas corporativas, uso obligatorio del gestor de contraseñas y prohibición de compartirlas.',
       secciones: [
-        { t: '1. Registro', p: 'Toda no conformidad se registra en el sistema con evidencia objetiva, responsable asignado y fecha compromiso de cierre.' },
-        { t: '2. Análisis de causa raíz', p: 'Se utiliza la técnica de los 5 porqués o el diagrama de Ishikawa. No se acepta un cierre sin análisis documentado.' },
-        { t: '3. Verificación de eficacia', p: 'La acción correctiva se verifica a los 60 días de implementada. Si la causa persiste, la no conformidad se reabre.' }
+        { t: '1. Requisitos mínimos', p: 'Las contraseñas deben tener al menos 14 caracteres, combinar mayúsculas, minúsculas, números y símbolos, y renovarse periódicamente.' },
+        { t: '2. Prohibición de compartir', p: 'Compartir credenciales está prohibido incluso de forma temporal o entre compañeros de confianza.' }
       ],
-      cambios: [{ v: '2.2', fecha: '2026-04-03', nivel: 'menor', detalle: 'Se incorpora el diagrama de Ishikawa como técnica válida.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-15', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-010', codigo: 'GUI-ONB-001', titulo: 'Guía de Bienvenida a Jalasoft',
-      categoria: 'Recursos Humanos', version: '6.0', criticidad: 'baja', estado: 'vigente',
-      actualizado: '2026-08-01', propietario: 'Lorena Vargas', paginas: 10, minutos: 12,
-      areas: ['ENG', 'QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true,
-      asignados: 248, leidos: 246, indiceError: 6, intentos: 251,
-      resumen: 'Presenta la historia, la estructura organizacional, los beneficios y los canales internos de la organización.',
+      id: 'DOC-010', codigo: 'POL-DAT-010', titulo: 'Protección y Privacidad de Datos e Información - Política (ESP - ENG)',
+      etapaId: 'ETP-2', categoria: 'Datos y Privacidad', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-15', propietario: 'Enterprise Information Security', paginas: 4, minutos: 10,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 196, indiceError: 41, intentos: 220,
+      resumen: 'Principios para proteger datos personales y de clientes: minimización, base legal de tratamiento y manejo de solicitudes de titulares.',
       secciones: [
-        { t: '1. Quiénes somos', p: 'Jalasoft es una compañía de desarrollo de software con operaciones en Bolivia y Estados Unidos, enfocada en construir equipos de alto rendimiento para clientes globales.' },
-        { t: '2. Estructura organizacional', p: 'La organización se articula en unidades de negocio con áreas transversales de soporte: People & Culture, Quality Control Processes & General Services, Finance e IT.' },
-        { t: '3. Beneficios', p: 'Seguro de salud complementario, plan de capacitación continua, apoyo en certificaciones internacionales y programa de bienestar.' },
-        { t: '4. Canales internos', p: 'El portal del colaborador, el canal de anuncios y la mesa de ayuda concentran la comunicación oficial de la organización.' }
+        { t: '1. Datos personales', p: 'Solo se recopilan los datos personales estrictamente necesarios para la finalidad declarada, y se conservan solo el tiempo necesario.' },
+        { t: '2. Solicitudes de titulares', p: 'Toda solicitud de acceso, corrección o eliminación de datos personales se canaliza al equipo de privacidad dentro de los plazos establecidos.' }
       ],
-      cambios: [{ v: '6.0', fecha: '2026-08-01', nivel: 'mayor', detalle: 'Actualización de la estructura organizacional y del catálogo de beneficios.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-15', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-011', codigo: 'PRO-ENG-021', titulo: 'Estándares de Desarrollo y Revisión de Código',
-      categoria: 'Calidad y Procesos', version: '4.5', criticidad: 'media', estado: 'vigente',
-      actualizado: '2026-07-29', propietario: 'Iván Suárez', paginas: 24, minutos: 28,
-      areas: ['ENG', 'QA'], obligatorio: true,
-      asignados: 132, leidos: 118, indiceError: 29, intentos: 208,
-      resumen: 'Convenciones de código, política de ramas, criterios de revisión por pares y cobertura mínima de pruebas.',
+      id: 'DOC-011', codigo: 'POL-SEG-011', titulo: 'Uso de internet - Política (ESP - ENG)',
+      etapaId: 'ETP-2', categoria: 'Seguridad de la Información', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-07-15', propietario: 'Enterprise Information Security', paginas: 2, minutos: 6,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 210, indiceError: 15, intentos: 228,
+      resumen: 'Uso aceptable de la conexión a internet corporativa, sitios y descargas restringidas, y monitoreo de tráfico.',
       secciones: [
-        { t: '1. Política de ramas', p: 'Se trabaja con ramas de funcionalidad de vida corta. Ninguna rama puede permanecer abierta más de cinco días hábiles sin integrarse.' },
-        { t: '2. Revisión por pares', p: 'Toda solicitud de integración requiere al menos dos aprobaciones, una de ellas de un desarrollador senior del proyecto.' },
-        { t: '3. Cobertura de pruebas', p: 'La cobertura mínima de pruebas unitarias es del 80% en los módulos de lógica de negocio.' },
-        { t: '4. Secretos en el repositorio', p: 'Está prohibido versionar credenciales, tokens o cadenas de conexión. El análisis automático bloquea la integración si detecta secretos.' }
+        { t: '1. Uso aceptable', p: 'La conexión corporativa es para fines laborales; el uso personal ocasional es tolerado si no compromete la seguridad ni el rendimiento de la red.' },
+        { t: '2. Contenido restringido', p: 'Está prohibido acceder a contenido ilegal, descargar software no autorizado o eludir los controles de seguridad de la red.' }
       ],
-      cambios: [{ v: '4.5', fecha: '2026-07-29', nivel: 'menor', detalle: 'Se eleva la cobertura mínima del 70% al 80%.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-15', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     },
     {
-      id: 'DOC-012', codigo: 'POL-FIN-004', titulo: 'Política de Gastos y Rendición de Cuentas',
-      categoria: 'Operaciones', version: '2.1', criticidad: 'baja', estado: 'vigente',
-      actualizado: '2026-01-19', propietario: 'Patricia Nogales', paginas: 7, minutos: 9,
-      areas: ['FIN', 'PMO', 'HR'], obligatorio: false,
-      asignados: 64, leidos: 58, indiceError: 17, intentos: 88,
-      resumen: 'Define los límites, comprobantes y plazos para la rendición de gastos corporativos y viáticos.',
+      id: 'DOC-012', codigo: 'POL-DAT-012', titulo: 'Uso de dispositivos de almacenamiento - Política (ESP-ENG)',
+      etapaId: 'ETP-2', categoria: 'Datos y Privacidad', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-07-15', propietario: 'Technology and Transformation', paginas: 1, minutos: 4,
+      areas: TODAS_AREAS, obligatorio: true, asignados: 248, leidos: 205, indiceError: 22, intentos: 224,
+      resumen: 'Condiciones para el uso de USB, discos externos y otros medios de almacenamiento removibles con información corporativa.',
       secciones: [
-        { t: '1. Plazos de rendición', p: 'Los gastos se rinden dentro de los 10 días hábiles posteriores al desembolso, con comprobante válido.' },
-        { t: '2. Viáticos', p: 'Los viáticos se calculan por destino según la tabla vigente y requieren aprobación previa del Manager.' },
-        { t: '3. Gastos no reembolsables', p: 'No se reembolsan multas, consumos personales ni gastos sin respaldo documentario.' }
+        { t: '1. Dispositivos permitidos', p: 'Solo pueden usarse dispositivos de almacenamiento cifrados y previamente autorizados por IT para transportar información corporativa.' },
+        { t: '2. Información Restringida', p: 'La información clasificada como Restringida no puede copiarse a dispositivos de almacenamiento personales bajo ninguna circunstancia.' }
       ],
-      cambios: [{ v: '2.1', fecha: '2026-01-19', nivel: 'menor', detalle: 'Actualización de la tabla de viáticos.' }]
+      cambios: [{ v: '1.0', fecha: '2026-07-15', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
+    },
+    {
+      id: 'DOC-013', codigo: 'POL-ING-013', titulo: 'Desarrollo Seguro - Política',
+      etapaId: 'ETP-3-ING', categoria: 'Ingeniería', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-08-01', propietario: 'Enterprise Information Security', paginas: 2, minutos: 6,
+      areas: ['ENG'], obligatorio: true, asignados: 92, leidos: 71, indiceError: 22, intentos: 84,
+      resumen: 'Prácticas mínimas de seguridad que debe seguir el equipo de Ingeniería al diseñar, construir y desplegar software.',
+      secciones: [
+        { t: '1. Principios de diseño', p: 'El software se diseña bajo el principio de mínimo privilegio y validando toda entrada de datos proveniente del usuario o de sistemas externos.' },
+        { t: '2. Gestión de dependencias', p: 'Las librerías de terceros se revisan por vulnerabilidades conocidas antes de incorporarse, y se mantienen actualizadas conforme al calendario de parches.' }
+      ],
+      cambios: [{ v: '1.0', fecha: '2026-08-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
+    },
+    {
+      id: 'DOC-014', codigo: 'POL-ING-014', titulo: 'Customer Engineering Confidential Information - Policy',
+      etapaId: 'ETP-3-ING', categoria: 'Ingeniería', version: '1.0', criticidad: 'alta', estado: 'vigente',
+      actualizado: '2026-08-01', propietario: 'Engineering', paginas: 3, minutos: 8,
+      areas: ['ENG'], obligatorio: true, asignados: 92, leidos: 65, indiceError: 29, intentos: 79,
+      resumen: 'Cómo tratar la información confidencial de clientes a la que accede el equipo de Ingeniería: código, arquitectura, datos de producción y comunicaciones del proyecto.',
+      secciones: [
+        { t: '1. Alcance de la confidencialidad', p: 'La información confidencial de un cliente no puede mencionarse, mostrarse ni divulgarse fuera del equipo del proyecto sin autorización escrita.' },
+        { t: '2. Publicaciones y redes sociales', p: 'No se publican capturas, nombres de proyecto ni detalles técnicos de un cliente en redes sociales o portafolios personales sin autorización.' }
+      ],
+      cambios: [{ v: '1.0', fecha: '2026-08-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
+    },
+    {
+      id: 'DOC-015', codigo: 'MAN-ADM-015', titulo: 'Gestión de Activos Fijos - Manual',
+      etapaId: 'ETP-3-ADM', categoria: 'Compras y Activos Fijos', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-08-01', propietario: 'Procurement and Asset Control', paginas: 15, minutos: 32,
+      areas: ['QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true, asignados: 156, leidos: 119, indiceError: 24, intentos: 138,
+      resumen: 'Procedimiento para el alta, transferencia, mantenimiento y baja de activos fijos, incluyendo responsabilidades del custodio del activo.',
+      secciones: [
+        { t: '1. Alta y custodia', p: 'Todo activo fijo se registra a nombre de un custodio responsable, quien debe reportar cualquier daño, pérdida o cambio de ubicación.' },
+        { t: '2. Baja de activos', p: 'La baja de un activo requiere el formulario correspondiente y la aprobación del área de Procurement and Asset Control.' }
+      ],
+      cambios: [{ v: '1.0', fecha: '2026-08-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
+    },
+    {
+      id: 'DOC-016', codigo: 'MAN-ADM-016', titulo: 'Compra de bienes y servicios - Manual (ESP-ENG)',
+      etapaId: 'ETP-3-ADM', categoria: 'Compras y Activos Fijos', version: '1.0', criticidad: 'media', estado: 'vigente',
+      actualizado: '2026-08-01', propietario: 'Procurement and Asset Control', paginas: 22, minutos: 45,
+      areas: ['QA', 'PMO', 'HR', 'FIN', 'IT'], obligatorio: true, asignados: 156, leidos: 108, indiceError: 26, intentos: 129,
+      resumen: 'Procedimiento y niveles de aprobación requeridos para solicitar la compra de bienes o la contratación de servicios.',
+      secciones: [
+        { t: '1. Solicitud de compra', p: 'Toda compra se inicia con una solicitud formal que indica el bien o servicio, el monto estimado y la justificación de negocio.' },
+        { t: '2. Niveles de aprobación', p: 'El monto de la compra determina cuántos niveles de aprobación se requieren antes de emitir la orden de compra.' }
+      ],
+      cambios: [{ v: '1.0', fecha: '2026-08-01', nivel: 'mayor', detalle: 'Publicación inicial dentro del programa de inducción.' }]
     }
   ];
 
@@ -272,71 +279,76 @@ const DB = (() => {
     { n: 5, nombre: 'Cierre y evidencia',          detalle: 'Registro de evidencias de cumplimiento y habilitación operativa.' }
   ];
 
-  /* ---------- Evaluaciones (banco de preguntas generado por IA) ---------- */
+  /* ---------- Evaluaciones ----------
+     Cada evaluación cubre TODOS los documentos de una etapa (etapaId),
+     tal como funciona el programa real: una sola evaluación por etapa,
+     no una por documento. */
   const evaluaciones = [
     {
-      id: 'EV-101', docId: 'DOC-001', titulo: 'Evaluación · Política de Seguridad de la Información',
-      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-09-03',
+      id: 'EV-ETP1', etapaId: 'ETP-1', titulo: 'Evaluación · Etapa 1: Políticas Fundamentales de Seguridad y Cumplimiento',
+      minutos: 12, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-07-06',
       preguntas: [
-        { q: '¿Cuál es la longitud mínima exigida para las contraseñas corporativas?', o: ['8 caracteres', '10 caracteres', '14 caracteres', '20 caracteres'], r: 2, exp: 'La sección 4 establece una longitud mínima de 14 caracteres con combinación de mayúsculas, minúsculas, números y símbolos.' },
-        { q: 'Ante la pérdida del dispositivo de segundo factor, ¿en qué plazo debe reportarse?', o: ['Dentro de 2 horas', 'Dentro de 24 horas', 'Dentro de 48 horas', 'Al siguiente día hábil'], r: 0, exp: 'La versión 4.2 redujo el plazo a 2 horas desde la detección de la pérdida.' },
-        { q: '¿Cuántos niveles de clasificación de la información define la política?', o: ['Dos', 'Tres', 'Cuatro', 'Cinco'], r: 2, exp: 'Son cuatro: Pública, Interna, Confidencial y Restringida.' },
-        { q: 'Un compañero le pide su contraseña para resolver una urgencia mientras está de viaje. ¿Qué corresponde hacer?', o: ['Compartirla solo por esta vez', 'Compartirla por un canal cifrado', 'Negarse y escalar la solicitud de acceso al Manager', 'Cambiarla después de compartirla'], r: 2, exp: 'Compartir credenciales está prohibido incluso de forma temporal. El acceso debe gestionarse por el procedimiento formal.' },
-        { q: '¿Cuál es el plazo máximo para reportar un incidente de seguridad?', o: ['2 horas', '24 horas', '72 horas', 'Una semana'], r: 1, exp: 'La sección 7 fija 24 horas desde la detección, y aclara que el reporte oportuno no es motivo de sanción.' }
+        { q: '¿Qué medida es obligatoria antes de conectar una computadora personal (BYOD) a sistemas corporativos?', o: ['Ninguna, basta con tener antivirus', 'Cifrado de disco y bloqueo automático de pantalla activados', 'Solo avisar a IT por correo', 'Instalar cualquier antivirus gratuito'], r: 1, exp: 'La política de BYOD Computadores exige cifrado de disco, antivirus actualizado y bloqueo automático antes de conectarse a recursos corporativos.' },
+        { q: '¿Quién puede instalar software en un equipo corporativo?', o: ['Cualquier colaborador, sin restricciones', 'Solo software del catálogo aprobado, o con solicitud formal', 'Solo el área de Finanzas', 'Solo los managers'], r: 1, exp: 'Control de Software y Hardware exige que solo se instale software aprobado por IT, salvo excepción justificada.' },
+        { q: '¿Qué debe hacer un colaborador con un documento que clasifica como Confidencial?', o: ['Etiquetarlo visiblemente con su nivel de clasificación', 'No es necesario etiquetarlo si es de uso interno', 'Solo etiquetarlo si sale de la empresa', 'Etiquetarlo solo si lo pide el cliente'], r: 0, exp: 'Etiquetado de Datos e Información exige que todo documento lleve visible su nivel de clasificación.' },
+        { q: 'Los bienes y servicios entregados por la organización son principalmente para:', o: ['Uso personal ilimitado', 'Uso laboral, con uso personal ocasional razonable', 'Reventa autorizada', 'Uso exclusivo fuera de horario laboral'], r: 1, exp: 'Uso correcto de bienes y servicios de la organización establece que son para fines laborales, con tolerancia razonable de uso personal ocasional.' },
+        { q: 'Ante un incidente de seguridad de la información, ¿en qué plazo debe reportarse?', o: ['Dentro de las 24 horas siguientes a su detección', 'No es obligatorio reportarlo', 'Solo si afecta a un cliente', 'En la siguiente reunión de equipo'], r: 0, exp: 'Seguridad de la Información exige reportar todo incidente o sospecha dentro de las 24 horas de detectado; el reporte oportuno no es motivo de sanción.' },
+        { q: '¿Qué software puede instalarse sin aprobación adicional?', o: ['Cualquiera, mientras sea gratuito', 'Únicamente el que está en el catálogo autorizado', 'Cualquiera si el colaborador lo justifica después', 'Solo el sistema operativo'], r: 1, exp: 'Software permitido define un catálogo autorizado por IT; cualquier excepción requiere solicitud formal.' }
       ]
     },
     {
-      id: 'EV-102', docId: 'DOC-005', titulo: 'Evaluación · Política de Uso de Inteligencia Artificial',
-      minutos: 8, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-09-09',
+      id: 'EV-ETP2', etapaId: 'ETP-2', titulo: 'Evaluación · Etapa 2: Políticas Fundamentales de Seguridad y Cumplimiento',
+      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-07-20',
       preguntas: [
-        { q: '¿Qué información NO puede ingresarse en una herramienta de IA generativa?', o: ['Documentación pública de la empresa', 'Código fuente de cliente bajo NDA', 'Texto de un artículo periodístico', 'Un temario de capacitación interno'], r: 1, exp: 'La sección 2 prohíbe ingresar código bajo NDA, datos personales, credenciales e información Restringida.' },
-        { q: '¿Puede utilizarse una cuenta personal de una herramienta de IA para tareas laborales?', o: ['Sí, si es la misma herramienta', 'Sí, con aviso al Manager', 'No, solo cuentas corporativas del catálogo autorizado', 'Solo fuera del horario laboral'], r: 2, exp: 'La versión 1.3 prohíbe explícitamente el uso de cuentas personales para tareas laborales.' },
-        { q: 'Un resultado generado por IA que se incorpora a un entregable...', o: ['Puede usarse directamente si el modelo es confiable', 'Debe ser revisado y validado por un responsable humano', 'Requiere aprobación del cliente siempre', 'No puede incorporarse bajo ninguna circunstancia'], r: 1, exp: 'La IA no sustituye la responsabilidad profesional: toda salida requiere revisión humana.' },
-        { q: '¿Cuándo debe declararse el uso de IA ante el cliente?', o: ['Nunca', 'Siempre, en todos los proyectos', 'Cuando el contrato lo exija', 'Solo si el cliente pregunta'], r: 2, exp: 'La trazabilidad se declara cuando el contrato con el cliente lo establece.' },
-        { q: 'El contenido generado con asistencia de IA, en términos de propiedad intelectual...', o: ['Es de dominio público', 'Pertenece al proveedor de la herramienta', 'Se rige por las mismas cláusulas que cualquier entregable', 'No tiene protección'], r: 2, exp: 'La sección 5 lo equipara a cualquier otro entregable del proyecto.' }
+        { q: '¿Qué información NO puede ingresarse en una herramienta de Inteligencia Artificial?', o: ['Documentación pública de la empresa', 'Código de cliente bajo NDA, datos personales o información Restringida', 'Un temario de capacitación interno', 'Un texto ya publicado en el sitio web'], r: 1, exp: 'La política de Inteligencia Artificial prohíbe ingresar código bajo NDA, datos personales, credenciales o información clasificada.' },
+        { q: '¿Puede usarse una cuenta personal de una herramienta de IA para tareas laborales?', o: ['Sí, si es la misma herramienta', 'No, solo cuentas corporativas del catálogo autorizado', 'Sí, fuera de horario laboral', 'Solo si el proyecto lo permite'], r: 1, exp: 'Solo pueden usarse herramientas de IA del catálogo corporativo, con cuenta corporativa.' },
+        { q: '¿Cuál es uno de los requisitos mínimos de una contraseña corporativa?', o: ['6 caracteres numéricos', 'Al menos 14 caracteres combinando mayúsculas, minúsculas, números y símbolos', 'El nombre de usuario repetido', 'No tiene requisitos mínimos'], r: 1, exp: 'Protección de Contraseñas exige al menos 14 caracteres con combinación de tipos de carácter.' },
+        { q: 'Un colaborador quiere copiar información Restringida a un USB personal. ¿Es correcto?', o: ['Sí, si el USB tiene contraseña', 'No, la información Restringida no puede copiarse a dispositivos personales', 'Sí, solo por esta vez', 'Depende del tamaño del archivo'], r: 1, exp: 'Uso de dispositivos de almacenamiento prohíbe copiar información Restringida a dispositivos personales bajo cualquier circunstancia.' },
+        { q: 'El uso personal ocasional de la conexión a internet corporativa es:', o: ['Está totalmente prohibido', 'Tolerado si no compromete la seguridad ni el rendimiento de la red', 'Solo permitido a managers', 'Requiere aprobación previa cada vez'], r: 1, exp: 'Uso de internet permite un uso personal ocasional razonable, dentro de los límites de seguridad.' }
       ]
     },
     {
-      id: 'EV-103', docId: 'DOC-004', titulo: 'Evaluación · Control de Calidad de Entregables',
-      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-08-29',
+      id: 'EV-ETP3-ING', etapaId: 'ETP-3-ING', titulo: 'Evaluación Etapa Extra Engineering',
+      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-08-06',
       preguntas: [
-        { q: '¿Cuántas etapas de control atraviesa un entregable antes de su liberación?', o: ['Dos', 'Tres', 'Cuatro', 'Cinco'], r: 2, exp: 'Revisión por pares, validación funcional, verificación de criterios de aceptación y aprobación del Quality Lead.' },
-        { q: 'Un entregable con un defecto de severidad alta abierto...', o: ['Puede liberarse con autorización del PM', 'No puede liberarse', 'Se libera y se corrige después', 'Depende del cliente'], r: 1, exp: 'Los criterios de aceptación exigen cero defectos críticos o altos abiertos.' },
-        { q: '¿Por cuánto tiempo se conservan las evidencias de control de calidad?', o: ['12 meses', '24 meses', '36 meses', 'Indefinidamente'], r: 2, exp: 'La sección 3 establece una conservación de 36 meses.' },
-        { q: 'Ante un defecto crítico detectado después de la liberación, la acción correctiva debe activarse en:', o: ['24 horas', '48 horas', '5 días hábiles', 'La siguiente iteración'], r: 1, exp: 'La versión 5.1 fija el plazo en 48 horas.' },
-        { q: '¿Cuál de estos NO es un indicador monitoreado por el procedimiento?', o: ['Densidad de defectos', 'Tasa de reproceso', 'Cumplimiento de fechas comprometidas', 'Rotación de personal'], r: 3, exp: 'La rotación de personal no forma parte de los indicadores del procedimiento de calidad.' }
+        { q: '¿Bajo qué principio debe diseñarse el software según Desarrollo Seguro?', o: ['Máximo privilegio para simplificar el desarrollo', 'Mínimo privilegio, validando toda entrada de datos', 'Sin restricciones de acceso en ambientes de prueba', 'Confiar en la validación del cliente'], r: 1, exp: 'Desarrollo Seguro exige diseñar bajo el principio de mínimo privilegio, validando toda entrada de datos.' },
+        { q: '¿Qué debe hacerse con las librerías de terceros antes de incorporarlas a un proyecto?', o: ['Nada, se agregan directamente', 'Revisarlas por vulnerabilidades conocidas', 'Solo revisarlas si el cliente lo pide', 'Revisarlas una vez al año'], r: 1, exp: 'Desarrollo Seguro exige revisar las dependencias de terceros por vulnerabilidades antes de incorporarlas.' },
+        { q: '¿Puede un colaborador de Ingeniería publicar una captura del código de un cliente en su portafolio personal?', o: ['Sí, es su trabajo', 'No, sin autorización escrita del cliente', 'Sí, si borra el logo del cliente', 'Solo si ya finalizó el proyecto'], r: 1, exp: 'Customer Engineering Confidential Information exige autorización escrita para divulgar cualquier detalle del proyecto de un cliente.' },
+        { q: '¿Hasta cuándo se mantiene la confidencialidad de la información de un cliente?', o: ['Solo mientras dura el proyecto activo', 'Durante toda la relación con el cliente y de forma indefinida salvo autorización', 'Un mes después de finalizado el proyecto', 'No aplica si el colaborador ya no está en el proyecto'], r: 1, exp: 'La confidencialidad de la información del cliente se mantiene más allá de la duración del proyecto, salvo autorización escrita para divulgarla.' }
       ]
     },
     {
-      id: 'EV-104', docId: 'DOC-002', titulo: 'Evaluación · Reglamento Interno de Trabajo',
-      minutos: 8, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-06-21',
+      id: 'EV-ETP3-ADM', etapaId: 'ETP-3-ADM', titulo: 'Evaluación Etapa Extra Administration',
+      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-08-06',
       preguntas: [
-        { q: '¿Cuál es la franja horaria de colaboración obligatoria?', o: ['08:00 a 14:00', '09:00 a 15:00', '10:00 a 16:00', '11:00 a 17:00'], r: 2, exp: 'La versión 3.0 formalizó la franja de 10:00 a 16:00.' },
-        { q: 'Un permiso planificado debe solicitarse con una anticipación mínima de:', o: ['24 horas', '48 horas', '72 horas', 'Una semana'], r: 1, exp: 'La sección 3 exige 48 horas, salvo emergencias médicas justificadas.' },
-        { q: 'En modalidad híbrida, el mínimo de días presenciales por semana es:', o: ['Uno', 'Dos', 'Tres', 'No hay mínimo'], r: 1, exp: 'Se requieren al menos dos días presenciales semanales.' },
-        { q: '¿En cuántas categorías se clasifican las faltas disciplinarias?', o: ['Dos', 'Tres', 'Cuatro', 'Cinco'], r: 1, exp: 'Leves, graves y muy graves.' },
-        { q: 'Las vacaciones no pueden postergarse más de:', o: ['Una gestión', 'Dos gestiones consecutivas', 'Tres gestiones', 'No hay límite'], r: 1, exp: 'La sección 4 establece un máximo de dos gestiones consecutivas.' }
+        { q: '¿Quién es responsable de reportar daños o pérdida de un activo fijo asignado?', o: ['El área de Procurement, sin intervención del colaborador', 'El custodio del activo, es decir, el colaborador a quien está asignado', 'Nadie, se detecta en el inventario anual', 'Solo el manager del área'], r: 1, exp: 'Gestión de Activos Fijos asigna la custodia del activo a un responsable, quien debe reportar daños, pérdidas o cambios de ubicación.' },
+        { q: '¿Qué se necesita para dar de baja un activo fijo?', o: ['Basta con dejar de usarlo', 'El formulario correspondiente y la aprobación de Procurement and Asset Control', 'Una llamada telefónica al área de TI', 'No requiere ningún trámite'], r: 1, exp: 'La baja de un activo requiere formulario y aprobación formal del área responsable.' },
+        { q: '¿Con qué debe iniciarse toda solicitud de compra de bienes o servicios?', o: ['Con la orden de compra directamente', 'Con una solicitud formal que indique el bien, el monto estimado y la justificación', 'Con la entrega del bien por parte del proveedor', 'No se requiere solicitud si el monto es bajo'], r: 1, exp: 'Compra de bienes y servicios exige iniciar el proceso con una solicitud formal debidamente justificada.' },
+        { q: '¿Qué determina cuántos niveles de aprobación necesita una compra?', o: ['El proveedor elegido', 'El monto de la compra', 'El día de la semana en que se solicita', 'El área que la solicita, sin importar el monto'], r: 1, exp: 'El manual de Compra de bienes y servicios define los niveles de aprobación según el monto de la compra.' }
       ]
     }
   ];
 
-  /* ---------- Campañas de micro aprendizaje ---------- */
+  /* ---------- Campañas de micro aprendizaje ----------
+     Refuerzos periódicos independientes de las etapas: siguen enviando
+     preguntas sobre un documento puntual a modo de recordatorio, aun
+     cuando el colaborador ya aprobó la evaluación de su etapa. */
   const campanas = [
-    { id: 'MA-21', nombre: 'Phishing y correo seguro', enfoque: 'Refuerzo de brecha', docId: 'DOC-001', periodicidad: 'Semanal', audiencia: 'Toda la organización', alcance: 248, respuesta: 82, acierto: 74, estado: 'activa', proxima: '2026-09-18' },
-    { id: 'MA-22', nombre: 'Uso responsable de IA', enfoque: 'Documento actualizado', docId: 'DOC-005', periodicidad: 'Quincenal', audiencia: 'Engineering, QA, PMO, IT', alcance: 186, respuesta: 68, acierto: 61, estado: 'activa', proxima: '2026-09-17' },
-    { id: 'MA-23', nombre: 'Criterios de aceptación', enfoque: 'Refuerzo de brecha', docId: 'DOC-004', periodicidad: 'Semanal', audiencia: 'Engineering, QA, PMO', alcance: 164, respuesta: 77, acierto: 66, estado: 'activa', proxima: '2026-09-16' },
-    { id: 'MA-24', nombre: 'Confidencialidad con clientes', enfoque: 'Concientización', docId: 'DOC-008', periodicidad: 'Mensual', audiencia: 'Engineering, QA, PMO, Finance', alcance: 201, respuesta: 71, acierto: 79, estado: 'activa', proxima: '2026-09-30' },
-    { id: 'MA-25', nombre: 'Gestión de accesos', enfoque: 'Concientización', docId: 'DOC-006', periodicidad: 'Mensual', audiencia: 'IT, Engineering, QA', alcance: 152, respuesta: 64, acierto: 83, estado: 'pausada', proxima: '—' },
-    { id: 'MA-26', nombre: 'Ergonomía y pausas activas', enfoque: 'Bienestar', docId: 'DOC-007', periodicidad: 'Quincenal', audiencia: 'Toda la organización', alcance: 248, respuesta: 59, acierto: 88, estado: 'borrador', proxima: '—' }
+    { id: 'MA-21', nombre: 'Phishing y correo seguro', enfoque: 'Refuerzo de brecha', docId: 'DOC-007', periodicidad: 'Semanal', audiencia: 'Toda la organización', alcance: 248, respuesta: 82, acierto: 74, estado: 'activa', proxima: '2026-09-18' },
+    { id: 'MA-22', nombre: 'Uso responsable de IA', enfoque: 'Refuerzo de brecha', docId: 'DOC-008', periodicidad: 'Quincenal', audiencia: 'Engineering, QA, PMO, IT', alcance: 186, respuesta: 68, acierto: 61, estado: 'activa', proxima: '2026-09-17' },
+    { id: 'MA-23', nombre: 'Protección y privacidad de datos', enfoque: 'Refuerzo de brecha', docId: 'DOC-010', periodicidad: 'Semanal', audiencia: 'Engineering, QA, PMO', alcance: 164, respuesta: 77, acierto: 66, estado: 'activa', proxima: '2026-09-16' },
+    { id: 'MA-24', nombre: 'Confidencialidad con clientes', enfoque: 'Concientización', docId: 'DOC-014', periodicidad: 'Mensual', audiencia: 'Engineering', alcance: 92, respuesta: 71, acierto: 79, estado: 'activa', proxima: '2026-09-30' },
+    { id: 'MA-25', nombre: 'Control de software y hardware', enfoque: 'Concientización', docId: 'DOC-003', periodicidad: 'Mensual', audiencia: 'IT, Engineering, QA', alcance: 152, respuesta: 64, acierto: 83, estado: 'pausada', proxima: '—' },
+    { id: 'MA-26', nombre: 'Cuidado de activos fijos', enfoque: 'Bienestar', docId: 'DOC-015', periodicidad: 'Quincenal', audiencia: 'Toda la organización', alcance: 248, respuesta: 59, acierto: 88, estado: 'borrador', proxima: '—' }
   ];
 
   /* ---------- Píldoras diarias del colaborador ---------- */
   const pildoras = [
-    { id: 'P-1', campana: 'MA-21', doc: 'DOC-001', q: 'Recibe un correo de un remitente desconocido con un archivo adjunto .zip que dice ser una factura. ¿Qué hace?', o: ['Abrirlo para verificar', 'Reenviarlo al equipo', 'Reportarlo a security@jalasoft.com sin abrirlo', 'Eliminarlo sin reportar'], r: 2, exp: 'Reportar sin abrir permite al equipo de seguridad bloquear la campaña para toda la organización.', estado: 'pendiente' },
-    { id: 'P-2', campana: 'MA-22', doc: 'DOC-005', q: 'Necesita resumir un documento de arquitectura del cliente. ¿Qué herramienta puede usar?', o: ['Cualquier herramienta gratuita', 'Una herramienta del catálogo corporativo autorizado', 'Su cuenta personal de IA', 'Ninguna, está prohibido resumir'], r: 1, exp: 'Solo herramientas del catálogo corporativo, y siempre respetando qué información no puede compartirse.', estado: 'pendiente' },
-    { id: 'P-3', campana: 'MA-23', doc: 'DOC-004', q: 'El cliente aprueba verbalmente un entregable con dos criterios de aceptación pendientes. ¿Procede la liberación?', o: ['Sí, la aprobación verbal basta', 'No, deben cumplirse el 100% de los criterios', 'Sí, si el PM lo autoriza', 'Depende de la severidad'], r: 1, exp: 'La liberación exige el 100% de criterios cumplidos y evidencia documentada.', estado: 'pendiente' },
-    { id: 'P-4', campana: 'MA-24', doc: 'DOC-008', q: '¿Puede publicar una captura de pantalla del tablero del proyecto en redes sociales?', o: ['Sí, si oculta el logo', 'Sí, es contenido propio', 'No, sin autorización escrita', 'Solo en perfiles privados'], r: 2, exp: 'Toda mención o imagen del cliente requiere autorización escrita previa.', estado: 'completada', acierto: true },
-    { id: 'P-5', campana: 'MA-21', doc: 'DOC-001', q: 'Al retirarse de su escritorio por cinco minutos, ¿qué debe hacer con su equipo?', o: ['Dejarlo abierto, es poco tiempo', 'Bloquear la sesión', 'Apagarlo completamente', 'Cerrar solo el correo'], r: 1, exp: 'La política de escritorio y pantalla limpios exige bloquear la sesión en toda ausencia.', estado: 'completada', acierto: true }
+    { id: 'P-1', campana: 'MA-21', doc: 'DOC-007', q: 'Recibe un correo de un remitente desconocido con un archivo adjunto .zip que dice ser una factura. ¿Qué hace?', o: ['Abrirlo para verificar', 'Reenviarlo al equipo', 'Reportarlo al canal de seguridad sin abrirlo', 'Eliminarlo sin reportar'], r: 2, exp: 'Reportar sin abrir permite al equipo de seguridad bloquear la campaña para toda la organización.', estado: 'pendiente' },
+    { id: 'P-2', campana: 'MA-22', doc: 'DOC-008', q: 'Necesita resumir un documento de arquitectura del cliente. ¿Qué herramienta puede usar?', o: ['Cualquier herramienta gratuita', 'Una herramienta del catálogo corporativo autorizado', 'Su cuenta personal de IA', 'Ninguna, está prohibido resumir'], r: 1, exp: 'Solo herramientas del catálogo corporativo, y siempre respetando qué información no puede compartirse.', estado: 'pendiente' },
+    { id: 'P-3', campana: 'MA-23', doc: 'DOC-010', q: 'Recibe una solicitud informal para compartir una lista de datos personales de clientes. ¿Qué hace?', o: ['La comparte si el compañero es de confianza', 'La deriva al equipo de privacidad y verifica la base legal', 'La ignora sin responder', 'La comparte si es solo un extracto'], r: 1, exp: 'Toda solicitud de datos personales debe verificarse contra la política antes de compartir cualquier información.', estado: 'pendiente' },
+    { id: 'P-4', campana: 'MA-24', doc: 'DOC-014', q: '¿Puede publicar una captura de pantalla del tablero del proyecto de un cliente en redes sociales?', o: ['Sí, si oculta el logo', 'Sí, es contenido propio', 'No, sin autorización escrita', 'Solo en perfiles privados'], r: 2, exp: 'Toda mención o imagen del cliente requiere autorización escrita previa.', estado: 'completada', acierto: true },
+    { id: 'P-5', campana: 'MA-21', doc: 'DOC-007', q: 'Al retirarse de su escritorio por cinco minutos, ¿qué debe hacer con su equipo?', o: ['Dejarlo abierto, es poco tiempo', 'Bloquear la sesión', 'Apagarlo completamente', 'Cerrar solo el correo'], r: 1, exp: 'La política de seguridad de la información exige bloquear la sesión en toda ausencia del puesto de trabajo.', estado: 'completada', acierto: true }
   ];
 
   /* ---------- Notificaciones y automatizaciones ---------- */
@@ -391,31 +403,31 @@ const DB = (() => {
       { label: 'Por iniciar',valor: 2,  color: 'muted' }
     ],
     brechas: [
-      { doc: 'Política de Uso de IA', tema: 'Información que no puede compartirse', error: 47, afectados: 64, tendencia: 'sube' },
-      { doc: 'Control de Calidad de Entregables', tema: 'Criterios de aceptación', error: 41, afectados: 52, tendencia: 'sube' },
-      { doc: 'Gestión de No Conformidades', tema: 'Análisis de causa raíz', error: 38, afectados: 24, tendencia: 'estable' },
-      { doc: 'Política de Seguridad', tema: 'Clasificación de la información', error: 34, afectados: 71, tendencia: 'baja' },
-      { doc: 'Estándares de Desarrollo', tema: 'Cobertura mínima de pruebas', error: 29, afectados: 33, tendencia: 'estable' },
-      { doc: 'Acuerdo de Confidencialidad', tema: 'Publicaciones en redes sociales', error: 26, afectados: 41, tendencia: 'baja' }
+      { doc: 'Inteligencia Artificial - Política', docId: 'DOC-008', tema: 'Información que no puede compartirse con herramientas de IA', error: 47, afectados: 64, tendencia: 'sube' },
+      { doc: 'Protección y Privacidad de Datos e Información', docId: 'DOC-010', tema: 'Clasificación y manejo de datos personales', error: 41, afectados: 52, tendencia: 'sube' },
+      { doc: 'Protección de Contraseñas', docId: 'DOC-009', tema: 'Uso obligatorio del gestor corporativo de contraseñas', error: 38, afectados: 24, tendencia: 'estable' },
+      { doc: 'Seguridad de la Información', docId: 'DOC-007', tema: 'Plazo de reporte de incidentes', error: 34, afectados: 71, tendencia: 'baja' },
+      { doc: 'Customer Engineering Confidential Information', docId: 'DOC-014', tema: 'Publicaciones sobre proyectos de clientes en redes sociales', error: 29, afectados: 33, tendencia: 'estable' },
+      { doc: 'Compra de bienes y servicios', docId: 'DOC-016', tema: 'Niveles de aprobación requeridos según el monto', error: 26, afectados: 41, tendencia: 'baja' }
     ]
   };
 
-  /* ---------- Sugerencias de la IA JJ ---------- */
+  /* ---------- Sugerencias de la IA ---------- */
   const sugerenciasIA = [
-    { t: 'Reforzar “Información que no puede compartirse”', d: 'El 47% de los errores de la Política de Uso de IA se concentra en la sección 2. Sugerimos una campaña semanal de 3 píldoras dirigida a Engineering y QA.', impacto: 'alto', accion: 'Crear campaña' },
-    { t: 'Reescribir el criterio de liberación', d: 'La pregunta sobre defectos de severidad alta tiene 41% de error. La redacción de la sección 2 admite dos lecturas; se sugiere precisarla.', impacto: 'alto', accion: 'Notificar a Gabriela Rocha' },
-    { t: 'Dividir la lectura del Reglamento Interno', d: 'El documento tiene 26 páginas y una tasa de abandono del 22% en la primera lectura. Sugerimos dividirlo en tres módulos de lectura.', impacto: 'medio', accion: 'Ajustar ruta' },
-    { t: 'Adelantar la fase 3 de Valeria Menacho', d: 'Completó la lectura documental 4 días antes del plazo con 92% de acierto. Puede habilitarse su documentación específica.', impacto: 'bajo', accion: 'Habilitar fase' }
+    { t: 'Reforzar “Información que no puede compartirse”', d: 'El 47% de los errores de Inteligencia Artificial - Política se concentra en qué información no puede ingresarse a herramientas de IA. Sugerimos una campaña quincenal dirigida a Engineering y QA.', impacto: 'alto', accion: 'Crear campaña', docId: 'DOC-008' },
+    { t: 'Reescribir el criterio de clasificación de datos', d: 'La pregunta sobre clasificación de datos personales tiene 41% de error. La redacción admite dos lecturas; se sugiere precisarla en Protección y Privacidad de Datos.', impacto: 'alto', accion: 'Notificar a Gabriela Rocha' },
+    { t: 'Dividir la lectura de Compra de bienes y servicios', d: 'El documento tiene 22 páginas y una tasa de abandono del 19% en la primera lectura. Sugerimos dividirlo en dos módulos dentro de la Etapa 3 Administrativos.', impacto: 'medio', accion: 'Ajustar ruta' },
+    { t: 'Adelantar la Etapa 3 de Valeria Menacho', d: 'Completó la Etapa 1 y la Etapa 2 cuatro días antes del plazo con 92% de acierto. Puede habilitarse su documentación específica de área.', impacto: 'bajo', accion: 'Habilitar fase' }
   ];
 
   /* ---------- Actividad reciente ---------- */
   const actividad = [
     { h: '08:12', t: 'El sistema escaló a Iván Suárez el caso de Rodrigo Ferrufino', tipo: 'sistema' },
-    { h: '08:03', t: 'Camila Rojas confirmó la lectura de Código de Ética y Conducta v2.5', tipo: 'lectura' },
-    { h: '07:41', t: 'La IA generó 5 preguntas para Política de Uso de IA v1.3', tipo: 'ia' },
+    { h: '08:03', t: 'Camila Rojas confirmó la lectura de Control de Software y Hardware', tipo: 'lectura' },
+    { h: '07:41', t: 'La IA generó las preguntas de la Evaluación de Etapa 2', tipo: 'ia' },
     { h: '07:00', t: 'Se enviaron 64 recordatorios de lectura pendiente', tipo: 'sistema' },
-    { h: 'Ayer',  t: 'Andrea Suárez reprobó la evaluación de Control de Calidad (58%)', tipo: 'evaluacion' },
-    { h: 'Ayer',  t: 'Marcelo Antezana publicó la versión 4.2 de la Política de Seguridad', tipo: 'documento' },
+    { h: 'Ayer',  t: 'Andrea Suárez reprobó la Evaluación de Etapa 1 (58%)', tipo: 'evaluacion' },
+    { h: 'Ayer',  t: 'Marcelo Antezana publicó una actualización de Inteligencia Artificial - Política', tipo: 'documento' },
     { h: 'Ayer',  t: 'Alejandra Mercado completó su ruta de inducción', tipo: 'hito' }
   ];
 
@@ -426,45 +438,56 @@ const DB = (() => {
     { id: 'U-COL', rol: 'colaborador', nombre: 'Camila Rojas',     cargo: 'QA Engineer',                    area: 'QA', correo: 'camila.rojas@jalasoft.com', colaboradorId: 'C-1001' }
   ];
 
-  /* ---------- Asignaciones del colaborador demo (Camila Rojas) ---------- */
+  /* ---------- Asignaciones del colaborador demo (Camila Rojas, área QA) ----------
+     QA no es Ingeniería, así que su Etapa 3 es "Administrativos" (DOC-015, DOC-016).
+     Ruta completa: Etapa 1 (7) + Etapa 2 (5) + Etapa 3 Administrativos (2) = 14 documentos. */
   const misDocumentos = [
-    { docId: 'DOC-010', estado: 'leido',     confirmado: '2026-09-08 09:14', vence: '2026-09-09', origen: 'Ruta base' },
-    { docId: 'DOC-002', estado: 'leido',     confirmado: '2026-09-09 11:02', vence: '2026-09-11', origen: 'Ruta base' },
-    { docId: 'DOC-003', estado: 'leido',     confirmado: '2026-09-16 08:03', vence: '2026-09-16', origen: 'Ruta base' },
-    { docId: 'DOC-001', estado: 'pendiente', confirmado: null,               vence: '2026-09-18', origen: 'Ruta base' },
-    { docId: 'DOC-005', estado: 'pendiente', confirmado: null,               vence: '2026-09-19', origen: 'Actualización v1.3' },
-    { docId: 'DOC-004', estado: 'pendiente', confirmado: null,               vence: '2026-09-22', origen: 'Asignado por Manager' },
-    { docId: 'DOC-007', estado: 'leido',     confirmado: '2026-09-10 16:40', vence: '2026-09-12', origen: 'Ruta base' }
+    { docId: 'DOC-001', estado: 'leido',     confirmado: '2026-09-08 09:14', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-002', estado: 'leido',     confirmado: '2026-09-08 09:30', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-003', estado: 'leido',     confirmado: '2026-09-08 09:52', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-004', estado: 'leido',     confirmado: '2026-09-09 10:05', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-005', estado: 'leido',     confirmado: '2026-09-09 10:40', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-006', estado: 'leido',     confirmado: '2026-09-09 11:02', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-007', estado: 'leido',     confirmado: '2026-09-09 11:20', vence: '2026-09-09', origen: 'Etapa 1' },
+    { docId: 'DOC-008', estado: 'leido',     confirmado: '2026-09-16 08:03', vence: '2026-09-16', origen: 'Etapa 2' },
+    { docId: 'DOC-009', estado: 'leido',     confirmado: '2026-09-16 08:20', vence: '2026-09-16', origen: 'Etapa 2' },
+    { docId: 'DOC-010', estado: 'leido',     confirmado: '2026-09-16 08:40', vence: '2026-09-16', origen: 'Etapa 2' },
+    { docId: 'DOC-011', estado: 'pendiente', confirmado: null,               vence: '2026-09-18', origen: 'Etapa 2' },
+    { docId: 'DOC-012', estado: 'pendiente', confirmado: null,               vence: '2026-09-19', origen: 'Etapa 2' },
+    { docId: 'DOC-015', estado: 'pendiente', confirmado: null,               vence: '2026-09-24', origen: 'Etapa 3 · Administrativos' },
+    { docId: 'DOC-016', estado: 'pendiente', confirmado: null,               vence: '2026-09-24', origen: 'Etapa 3 · Administrativos' }
   ];
 
   const misEvaluaciones = [
-    { evId: 'EV-104', estado: 'aprobada', puntaje: 88, fecha: '2026-09-12 15:41', intento: 1 },
-    { evId: 'EV-101', estado: 'pendiente', puntaje: null, fecha: null, intento: 0 },
-    { evId: 'EV-102', estado: 'pendiente', puntaje: null, fecha: null, intento: 0 },
-    { evId: 'EV-103', estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 }
+    { evId: 'EV-ETP1', etapaId: 'ETP-1', estado: 'aprobada', puntaje: 88, fecha: '2026-09-09 15:41', intento: 1 },
+    { evId: 'EV-ETP2', etapaId: 'ETP-2', estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 },
+    { evId: 'EV-ETP3-ADM', etapaId: 'ETP-3-ADM', estado: 'bloqueada', puntaje: null, fecha: null, intento: 0 }
   ];
 
   /* ---------- Base de conocimiento del asistente ---------- */
   const chatbotKB = [
-    { k: ['contraseña', 'password', 'clave', 'credencial'], r: 'La Política de Seguridad de la Información (v4.2, sección 4) exige contraseñas de al menos 14 caracteres, con mayúsculas, minúsculas, números y símbolos, renovadas cada 90 días. El gestor corporativo de contraseñas es obligatorio y compartir credenciales está prohibido, incluso de forma temporal.', f: 'DOC-001' },
-    { k: ['mfa', 'doble factor', 'segundo factor', '2fa'], r: 'El segundo factor es obligatorio para correo, VPN, repositorios de código y consolas de administración en la nube. Si pierde el dispositivo, debe reportarlo dentro de las 2 horas siguientes (cambio introducido en la versión 4.2).', f: 'DOC-001' },
-    { k: ['incidente', 'reportar', 'security'], r: 'Todo incidente o sospecha de incidente se reporta a security@jalasoft.com dentro de las 24 horas de detectado. Reportar a tiempo nunca es motivo de sanción; omitir el reporte sí lo es.', f: 'DOC-001' },
-    { k: ['ia', 'inteligencia artificial', 'chatgpt', 'gemini', 'copilot'], r: 'Solo puede usar herramientas del catálogo corporativo de IA, con cuenta corporativa. Nunca ingrese código de cliente bajo NDA, datos personales, credenciales ni información Restringida. Todo resultado debe ser revisado por una persona antes de incorporarse a un entregable.', f: 'DOC-005' },
-    { k: ['vacacion', 'permiso', 'licencia'], r: 'Los permisos se solicitan con 48 horas de anticipación, salvo emergencias médicas justificadas dentro de las 24 horas posteriores. Las vacaciones se coordinan con su Manager y no pueden postergarse más de dos gestiones consecutivas.', f: 'DOC-002' },
-    { k: ['horario', 'jornada', 'presencial', 'remoto', 'hibrido', 'híbrido'], r: 'La jornada es de 8 horas con ingreso flexible entre 07:30 y 09:30, y franja de colaboración obligatoria de 10:00 a 16:00. La modalidad híbrida requiere al menos dos días presenciales por semana.', f: 'DOC-002' },
-    { k: ['regalo', 'soborno', 'etica', 'ética', 'denuncia'], r: 'No se aceptan regalos o beneficios que superen los USD 50 o que puedan influir en una decisión comercial. Las denuncias se canalizan por ética@jalasoft.com, pueden ser anónimas y están protegidas contra represalias.', f: 'DOC-003' },
-    { k: ['calidad', 'entregable', 'liberar', 'aceptacion', 'aceptación'], r: 'Un entregable se libera solo si cumple el 100% de los criterios de aceptación y no tiene defectos críticos o altos abiertos. Atraviesa cuatro etapas de control y sus evidencias se conservan 36 meses.', f: 'DOC-004' },
-    { k: ['acceso', 'permiso de sistema', 'privilegio'], r: 'Todo acceso se solicita por ticket con aprobación del Manager y del propietario del sistema, bajo el principio de mínimo privilegio. Los accesos sin uso por 60 días se revocan automáticamente.', f: 'DOC-006' },
-    { k: ['nda', 'confidencial', 'cliente', 'redes sociales'], r: 'La confidencialidad se mantiene durante la relación laboral y cinco años después. No puede mencionar al cliente, mostrar capturas de sus sistemas ni divulgar detalles del proyecto sin autorización escrita.', f: 'DOC-008' },
-    { k: ['evacuacion', 'evacuación', 'emergencia', 'ergonomia', 'ergonomía', 'accidente'], r: 'Cada piso tiene dos rutas de evacuación señalizadas y un punto de encuentro externo; los simulacros son semestrales y obligatorios. Los accidentes se reportan a People & Culture dentro de 24 horas, incluso sin lesión.', f: 'DOC-007' },
-    { k: ['gasto', 'viatico', 'viático', 'rendicion', 'rendición'], r: 'Los gastos se rinden dentro de los 10 días hábiles posteriores al desembolso con comprobante válido. Los viáticos requieren aprobación previa del Manager y siguen la tabla vigente por destino.', f: 'DOC-012' },
-    { k: ['codigo', 'código', 'rama', 'pull request', 'pruebas', 'cobertura'], r: 'Las ramas de funcionalidad no pueden vivir más de cinco días hábiles. Cada integración requiere dos aprobaciones, una de un senior, y la cobertura mínima de pruebas unitarias es del 80%.', f: 'DOC-011' }
+    { k: ['byod', 'computadora personal', 'equipo personal'], r: 'Puede usar una computadora personal para tareas laborales solo si tiene cifrado de disco activado, antivirus actualizado y bloqueo automático de pantalla configurado.', f: 'DOC-001' },
+    { k: ['tablet', 'celular', 'movil', 'móvil', 'smartphone'], r: 'Las tablets y celulares personales usados para correo o chat corporativo deben tener PIN o biometría activados y permitir borrado remoto en caso de pérdida o robo.', f: 'DOC-002' },
+    { k: ['software', 'instalar', 'licencia', 'catalogo', 'catálogo'], r: 'Solo puede instalarse software del catálogo autorizado por IT. Cualquier excepción requiere una solicitud formal con justificación de negocio.', f: 'DOC-006' },
+    { k: ['etiqueta', 'clasificacion', 'clasificación', 'confidencial', 'restringido', 'restringida'], r: 'La información se clasifica en Pública, Interna, Confidencial y Restringida, y todo documento debe llevar visible su etiqueta de clasificación.', f: 'DOC-004' },
+    { k: ['contraseña', 'password', 'clave', 'credencial'], r: 'Las contraseñas corporativas deben tener al menos 14 caracteres, combinar mayúsculas, minúsculas, números y símbolos, y usarse siempre a través del gestor corporativo. Compartir credenciales está prohibido, incluso de forma temporal.', f: 'DOC-009' },
+    { k: ['incidente', 'reportar', 'seguridad de la informacion'], r: 'Todo incidente o sospecha de incidente de seguridad se reporta dentro de las 24 horas siguientes a su detección. Reportarlo a tiempo nunca es motivo de sanción; omitirlo sí lo es.', f: 'DOC-007' },
+    { k: ['ia', 'inteligencia artificial', 'chatgpt', 'gemini', 'copilot'], r: 'Solo puede usar herramientas de IA del catálogo corporativo, con cuenta corporativa. Nunca ingrese código de cliente bajo NDA, datos personales, credenciales ni información clasificada. Todo resultado generado por IA debe ser revisado por una persona.', f: 'DOC-008' },
+    { k: ['dato personal', 'datos personales', 'privacidad', 'titular'], r: 'Solo se recopilan los datos personales estrictamente necesarios para la finalidad declarada. Toda solicitud de acceso, corrección o eliminación de datos se canaliza al equipo de privacidad.', f: 'DOC-010' },
+    { k: ['internet', 'navegacion', 'navegación', 'descarga'], r: 'La conexión corporativa es para fines laborales; el uso personal ocasional se tolera si no compromete la seguridad ni el rendimiento de la red. Está prohibido eludir los controles de seguridad.', f: 'DOC-011' },
+    { k: ['usb', 'disco externo', 'almacenamiento', 'pendrive'], r: 'Solo pueden usarse dispositivos de almacenamiento cifrados y autorizados por IT. La información Restringida no puede copiarse a dispositivos personales bajo ninguna circunstancia.', f: 'DOC-012' },
+    { k: ['codigo', 'código', 'dependencias', 'vulnerabilidad', 'desarrollo seguro'], r: 'El software se diseña bajo el principio de mínimo privilegio, validando toda entrada de datos. Las librerías de terceros se revisan por vulnerabilidades conocidas antes de incorporarse.', f: 'DOC-013' },
+    { k: ['nda', 'confidencial', 'cliente', 'redes sociales'], r: 'La información confidencial de un cliente no puede mencionarse, mostrarse ni divulgarse fuera del equipo del proyecto sin autorización escrita, ni siquiera en redes sociales o portafolios personales.', f: 'DOC-014' },
+    { k: ['activo fijo', 'activos fijos', 'custodio', 'baja de equipo'], r: 'Todo activo fijo se registra a nombre de un custodio responsable, quien debe reportar daños, pérdidas o cambios de ubicación. La baja requiere formulario y aprobación de Procurement and Asset Control.', f: 'DOC-015' },
+    { k: ['compra', 'proveedor', 'adquisicion', 'adquisición', 'orden de compra'], r: 'Toda compra se inicia con una solicitud formal que indica el bien o servicio, el monto estimado y la justificación de negocio. El monto determina cuántos niveles de aprobación se requieren.', f: 'DOC-016' }
   ];
 
   return {
-    areas, categorias, documentos, colaboradores, fases, evaluaciones, campanas,
+    areas, categorias, etapas, documentos, colaboradores, fases, evaluaciones, campanas,
     pildoras, notificaciones, avisosColaborador, evidencias, series, sugerenciasIA,
     actividad, usuarios, misDocumentos, misEvaluaciones, chatbotKB
   };
 })();
+
+
 
