@@ -593,16 +593,6 @@ function vAdminDashboard() {
 
 
       <section class="card">
-        <div class="card__head"><div><h3>Actividad de hoy</h3><p>16 de septiembre de 2026</p></div></div>
-        <div class="card__body">
-          <ul class="feed">
-            ${DB.actividad.map(a => {
-              const cls = a.tipo === 'ia' ? 'ia' : a.tipo === 'hito' || a.tipo === 'lectura' ? 'ok' : a.tipo === 'evaluacion' ? 'warn' : 'brand';
-              const ic = a.tipo === 'ia' ? ICO.spark : a.tipo === 'documento' ? ICO.file : a.tipo === 'evaluacion' ? ICO.alert : a.tipo === 'sistema' ? ICO.bell : ICO.check;
-              return `<li><span class="feed__i ${cls}">${svg(ic)}</span><span><b>${esc(a.t)}</b><small>${a.h}</small></span></li>`;
-            }).join('')}
-          </ul>
-        </div>
       </section>
     </div>
   </div>
