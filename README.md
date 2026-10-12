@@ -73,6 +73,6 @@ Solo un Administrador puede ascender, desde **Managers y ascensos** o desde la f
 
 - Sin librerías externas: los gráficos (líneas, barras, dona, anillos de progreso, sparklines)
   se dibujan como SVG generado en `app.js`.
-- El estado vive en `S` y se guarda en `localStorage` (`jala-induccion.v3.demo` / `.cero`) tras cada acción.
+- El estado vive en `S` y se guarda en `localStorage` (`jala-induccion.v5.demo` / `.cero`) tras cada acción.
 - Para conectar un backend real, reemplace `data.js` por llamadas a la API y mantenga la misma
   forma de los objetos; las vistas leen siempre desde `S`.
