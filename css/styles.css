@@ -613,3 +613,15 @@ table{border-collapse:collapse;width:100%}
   .modeinfo{margin-bottom:12px}
   .login__note{margin-top:10px}
 }
+
+/* Pasos de un documento: Lectura → Examen → Aprobado */
+.pasos{display:inline-flex;align-items:center;gap:4px}
+.pasos i{width:10px;height:1px;background:var(--line)}
+.paso{font-size:11px;padding:1px 7px;border-radius:10px;background:#F1F4F9;color:var(--muted);font-weight:560}
+.paso--ok{background:var(--ok-050);color:var(--ok)}
+.paso--now{background:var(--brand-050);color:var(--brand)}
+.aviso-mgr{display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid #D6E1FB;background:var(--brand-050);border-radius:var(--r);margin-bottom:16px}
+.aviso-mgr b{display:block;font-size:14px}
+.aviso-mgr p{margin:3px 0 0;font-size:13px;color:var(--text-2)}
+.aviso-mgr .feed__i{flex:none}
+.pop__i.is-new{background:var(--brand-050)}

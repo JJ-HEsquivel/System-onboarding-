@@ -432,36 +432,278 @@ const DB = (() => {
   ];
 
   /* ---------- Evaluaciones ----------
-     Cada evaluación cubre TODOS los documentos de una etapa (etapaId),
-     tal como funciona el programa real: una sola evaluación por etapa,
-     no una por documento. */
-  const evaluaciones = [
-    {
-      id: 'EV-ETP1', etapaId: 'ETP-1', titulo: 'Evaluación · Etapa 1: Políticas Fundamentales de Seguridad y Cumplimiento',
-      minutos: 12, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-07-06',
-      preguntas: [
-        { q: '¿Qué medida es obligatoria antes de conectar una computadora personal (BYOD) a sistemas corporativos?', o: ['Ninguna, basta con tener antivirus', 'Cifrado de disco y bloqueo automático de pantalla activados', 'Solo avisar a IT por correo', 'Instalar cualquier antivirus gratuito'], r: 1, exp: 'La política de BYOD Computadores exige cifrado de disco, antivirus actualizado y bloqueo automático antes de conectarse a recursos corporativos.' },
-        { q: '¿Quién puede instalar software en un equipo corporativo?', o: ['Cualquier colaborador, sin restricciones', 'Solo software del catálogo aprobado, o con solicitud formal', 'Solo el área de Finanzas', 'Solo los managers'], r: 1, exp: 'Control de Software y Hardware exige que solo se instale software aprobado por IT, salvo excepción justificada.' },
-        { q: '¿Qué debe hacer un colaborador con un documento que clasifica como Confidencial?', o: ['Etiquetarlo visiblemente con su nivel de clasificación', 'No es necesario etiquetarlo si es de uso interno', 'Solo etiquetarlo si sale de la empresa', 'Etiquetarlo solo si lo pide el cliente'], r: 0, exp: 'Etiquetado de Datos e Información exige que todo documento lleve visible su nivel de clasificación.' },
-        { q: 'Los bienes y servicios entregados por la organización son principalmente para:', o: ['Uso personal ilimitado', 'Uso laboral, con uso personal ocasional razonable', 'Reventa autorizada', 'Uso exclusivo fuera de horario laboral'], r: 1, exp: 'Uso correcto de bienes y servicios de la organización establece que son para fines laborales, con tolerancia razonable de uso personal ocasional.' },
-        { q: 'Ante un incidente de seguridad de la información, ¿en qué plazo debe reportarse?', o: ['Dentro de las 24 horas siguientes a su detección', 'No es obligatorio reportarlo', 'Solo si afecta a un cliente', 'En la siguiente reunión de equipo'], r: 0, exp: 'Seguridad de la Información exige reportar todo incidente o sospecha dentro de las 24 horas de detectado; el reporte oportuno no es motivo de sanción.' },
-        { q: '¿Qué software puede instalarse sin aprobación adicional?', o: ['Cualquiera, mientras sea gratuito', 'Únicamente el que está en el catálogo autorizado', 'Cualquiera si el colaborador lo justifica después', 'Solo el sistema operativo'], r: 1, exp: 'Software permitido define un catálogo autorizado por IT; cualquier excepción requiere solicitud formal.' }
-      ]
-    },
-    {
-      id: 'EV-ETP2', etapaId: 'ETP-2', titulo: 'Evaluación · Etapa 2: Políticas Fundamentales de Seguridad y Cumplimiento',
-      minutos: 10, minimo: 80, intentos: 3, generadaPor: 'IA · Gemini Pro', fecha: '2026-07-20',
-      preguntas: [
-        { q: '¿Qué información NO puede ingresarse en una herramienta de Inteligencia Artificial?', o: ['Documentación pública de la empresa', 'Código de cliente bajo NDA, datos personales o información Restringida', 'Un temario de capacitación interno', 'Un texto ya publicado en el sitio web'], r: 1, exp: 'La política de Inteligencia Artificial prohíbe ingresar código bajo NDA, datos personales, credenciales o información clasificada.' },
-        { q: '¿Puede usarse una cuenta personal de una herramienta de IA para tareas laborales?', o: ['Sí, si es la misma herramienta', 'No, solo cuentas corporativas del catálogo autorizado', 'Sí, fuera de horario laboral', 'Solo si el proyecto lo permite'], r: 1, exp: 'Solo pueden usarse herramientas de IA del catálogo corporativo, con cuenta corporativa.' },
-        { q: '¿Cuál es uno de los requisitos mínimos de una contraseña corporativa?', o: ['6 caracteres numéricos', 'Al menos 14 caracteres combinando mayúsculas, minúsculas, números y símbolos', 'El nombre de usuario repetido', 'No tiene requisitos mínimos'], r: 1, exp: 'Protección de Contraseñas exige al menos 14 caracteres con combinación de tipos de carácter.' },
-        { q: 'Un colaborador quiere copiar información Restringida a un USB personal. ¿Es correcto?', o: ['Sí, si el USB tiene contraseña', 'No, la información Restringida no puede copiarse a dispositivos personales', 'Sí, solo por esta vez', 'Depende del tamaño del archivo'], r: 1, exp: 'Uso de dispositivos de almacenamiento prohíbe copiar información Restringida a dispositivos personales bajo cualquier circunstancia.' },
-        { q: 'El uso personal ocasional de la conexión a internet corporativa es:', o: ['Está totalmente prohibido', 'Tolerado si no compromete la seguridad ni el rendimiento de la red', 'Solo permitido a managers', 'Requiere aprobación previa cada vez'], r: 1, exp: 'Uso de internet permite un uso personal ocasional razonable, dentro de los límites de seguridad.' }
-      ]
-    }
-    // La evaluación de la Etapa 3 no es fija: se arma para cada colaborador con las
-    // preguntas de los documentos de su área que el Manager validó (ver app.js).
-  ];
+     Cada documento tiene su propia evaluación: el colaborador lee, confirma la
+     lectura y recién entonces rinde el examen de ESE documento. El documento
+     cuenta como aprobado solo cuando aprueba su examen. Las preguntas viven en
+     cada documento (`preguntas`); app.js arma una evaluación por documento. */
+  const P = (q, o, r, exp) => ({ q, o, r, exp });
+  const preguntasBase = {
+    'DOC-001': [
+      P('¿Qué medida es obligatoria antes de conectar una computadora personal (BYOD) a sistemas corporativos?', ['Ninguna, basta con tener antivirus', 'Cifrado de disco y bloqueo automático de pantalla activados', 'Solo avisar a IT por correo', 'Instalar cualquier antivirus gratuito'], 1, 'BYOD Computadores exige cifrado de disco, antivirus actualizado y bloqueo automático antes de conectarse.'),
+      P('¿A quién aplica la política BYOD de computadores?', ['Solo a los managers', 'A todo colaborador que use una computadora personal para conectarse a sistemas o datos de la organización', 'Solo a Engineering', 'A nadie, es opcional'], 1, 'Aplica a todo colaborador que use su computadora personal para fines laborales.')
+    ],
+    'DOC-002': [
+      P('¿Qué medidas exige la política para tablets y smartphones personales?', ['Ninguna', 'PIN o biometría, sistema operativo al día y borrado remoto', 'Solo una funda protectora', 'Desactivar el correo'], 1, 'Se exige PIN o biometría, actualizaciones al día y posibilidad de borrado remoto.'),
+      P('¿Qué dispositivos cubre esta política?', ['Solo laptops corporativas', 'Tablets y smartphones personales usados para correo, mensajería de trabajo o MFA', 'Impresoras', 'Servidores'], 1, 'Cubre los dispositivos móviles personales usados para fines laborales.')
+    ],
+    'DOC-003': [
+      P('¿Quién puede instalar software en un equipo corporativo?', ['Cualquier colaborador, sin restricciones', 'Solo software aprobado por IT, o con solicitud formal', 'Solo el área de Finanzas', 'Solo los managers'], 1, 'Solo se instala software aprobado por IT, salvo excepción justificada.'),
+      P('¿Qué pasa con el hardware asignado al finalizar la relación laboral?', ['Se lo queda el colaborador', 'Debe devolverse en las condiciones entregadas', 'Se desecha', 'Se transfiere a un compañero sin aviso'], 1, 'Todo equipo asignado se devuelve en las condiciones entregadas.')
+    ],
+    'DOC-004': [
+      P('¿Qué debe hacer un colaborador con un documento que clasifica como Confidencial?', ['Etiquetarlo visiblemente con su nivel de clasificación', 'No es necesario etiquetarlo si es de uso interno', 'Solo etiquetarlo si sale de la empresa', 'Etiquetarlo solo si lo pide el cliente'], 0, 'Todo documento debe llevar visible su nivel de clasificación.'),
+      P('¿Cuáles son los niveles de clasificación de la información?', ['Alta y baja', 'Pública, Interna, Confidencial y Restringida', 'Secreta y no secreta', 'No existen niveles'], 1, 'La información se clasifica en Pública, Interna, Confidencial y Restringida.')
+    ],
+    'DOC-005': [
+      P('Los bienes y servicios entregados por la organización son principalmente para:', ['Uso personal ilimitado', 'Uso laboral, con uso personal ocasional razonable', 'Reventa autorizada', 'Uso exclusivo fuera de horario'], 1, 'Son para fines laborales, con tolerancia razonable de uso personal ocasional.'),
+      P('¿Qué puede ocurrir ante el uso indebido reiterado de bienes corporativos?', ['Nada', 'Medidas disciplinarias', 'Un premio', 'Solo un aviso verbal sin registro'], 1, 'El uso indebido reiterado puede derivar en medidas disciplinarias.')
+    ],
+    'DOC-006': [
+      P('¿Qué software puede instalarse sin aprobación adicional?', ['Cualquiera, mientras sea gratuito', 'Únicamente el que está en el catálogo autorizado', 'Cualquiera si se justifica después', 'Solo el sistema operativo'], 1, 'Solo el software del catálogo autorizado por IT.'),
+      P('¿Qué se necesita para usar software fuera del catálogo?', ['Nada', 'Solicitud formal con justificación de negocio y aprobación de IT', 'La recomendación de un compañero', 'Instalarlo y avisar luego'], 1, 'Las excepciones requieren solicitud formal y aprobación de IT.')
+    ],
+    'DOC-007': [
+      P('Ante un incidente de seguridad de la información, ¿en qué plazo debe reportarse?', ['Dentro de las 24 horas siguientes a su detección', 'No es obligatorio reportarlo', 'Solo si afecta a un cliente', 'En la siguiente reunión de equipo'], 0, 'Todo incidente o sospecha se reporta dentro de las 24 horas.'),
+      P('¿Qué principios protege la política de seguridad de la información?', ['Velocidad y costo', 'Confidencialidad, integridad y disponibilidad', 'Solo la confidencialidad', 'Ninguno'], 1, 'La información se protege en confidencialidad, integridad y disponibilidad.')
+    ],
+    'DOC-008': [
+      P('¿Qué información NO puede ingresarse en una herramienta de Inteligencia Artificial?', ['Documentación pública de la empresa', 'Código de cliente bajo NDA, datos personales o información Restringida', 'Un temario interno', 'Un texto ya publicado'], 1, 'Está prohibido ingresar código bajo NDA, datos personales, credenciales o información clasificada.'),
+      P('¿Puede usarse una cuenta personal de una herramienta de IA para tareas laborales?', ['Sí, si es la misma herramienta', 'No, solo cuentas corporativas del catálogo autorizado', 'Sí, fuera de horario', 'Solo si el proyecto lo permite'], 1, 'Solo herramientas del catálogo corporativo, con cuenta corporativa.')
+    ],
+    'DOC-009': [
+      P('¿Cuál es uno de los requisitos mínimos de una contraseña corporativa?', ['6 caracteres numéricos', 'Al menos 14 caracteres combinando mayúsculas, minúsculas, números y símbolos', 'El nombre de usuario repetido', 'No tiene requisitos'], 1, 'Las contraseñas requieren al menos 14 caracteres con combinación de tipos.'),
+      P('¿Se pueden compartir credenciales con un compañero de confianza?', ['Sí, temporalmente', 'No, está prohibido incluso de forma temporal', 'Sí, si es del mismo equipo', 'Solo por chat'], 1, 'Compartir credenciales está prohibido siempre.')
+    ],
+    'DOC-010': [
+      P('¿Qué datos personales pueden recopilarse?', ['Todos los disponibles', 'Solo los estrictamente necesarios para la finalidad declarada', 'Los que pida cualquier área', 'Ninguno'], 1, 'Rige el principio de minimización: solo lo estrictamente necesario.'),
+      P('¿A dónde se canaliza una solicitud de acceso o eliminación de datos personales?', ['Se ignora', 'Al equipo de privacidad, dentro de los plazos establecidos', 'Al cliente', 'Se responde informalmente'], 1, 'Toda solicitud de titulares se canaliza al equipo de privacidad.')
+    ],
+    'DOC-011': [
+      P('El uso personal ocasional de la conexión a internet corporativa es:', ['Está totalmente prohibido', 'Tolerado si no compromete la seguridad ni el rendimiento de la red', 'Solo para managers', 'Requiere aprobación cada vez'], 1, 'Se tolera un uso personal ocasional razonable.'),
+      P('¿Qué está prohibido hacer con la conexión corporativa?', ['Leer el correo', 'Eludir los controles de seguridad o descargar software no autorizado', 'Usar el navegador', 'Consultar documentación'], 1, 'Está prohibido eludir controles o descargar software no autorizado.')
+    ],
+    'DOC-012': [
+      P('Un colaborador quiere copiar información Restringida a un USB personal. ¿Es correcto?', ['Sí, si el USB tiene contraseña', 'No, la información Restringida no puede copiarse a dispositivos personales', 'Sí, solo por esta vez', 'Depende del tamaño'], 1, 'La información Restringida nunca se copia a dispositivos personales.'),
+      P('¿Qué dispositivos de almacenamiento pueden usarse con información corporativa?', ['Cualquiera', 'Solo los cifrados y autorizados por IT', 'Los que regalen en eventos', 'Ninguno, nunca'], 1, 'Solo dispositivos cifrados y previamente autorizados por IT.')
+    ]
+  };
+  documentos.forEach(d => { if (preguntasBase[d.id]) d.preguntas = preguntasBase[d.id].map(p => ({ ...p, docId: d.id })); });
+
+  /* Preguntas adicionales: cada documento se evalúa con 5 preguntas. */
+  const preguntasExtra = {
+    /* ---- Etapa 1 ---- */
+    'DOC-001': [
+      P('¿Qué debe tener activado el equipo personal antes de acceder a recursos corporativos?', ['Solo el wifi', 'Antivirus actualizado', 'Un fondo de pantalla corporativo', 'El modo avión'], 1, 'El antivirus actualizado es uno de los requisitos mínimos de BYOD.'),
+      P('¿Quién es responsable del equipo personal usado para trabajar?', ['IT, siempre', 'El colaborador dueño del equipo', 'El cliente', 'Nadie'], 1, 'La política define responsabilidades del colaborador sobre su equipo.'),
+      P('Si su computadora personal no tiene cifrado de disco, ¿puede conectarse a sistemas corporativos?', ['Sí, por poco tiempo', 'Solo los viernes', 'No, primero debe cumplir los requisitos mínimos', 'Sí, si usa VPN'], 2, 'Sin cifrado de disco no se cumple el requisito mínimo para conectarse.')
+    ],
+    'DOC-002': [
+      P('¿Para qué sirve el borrado remoto en un dispositivo móvil personal?', ['Para liberar espacio', 'Para proteger la información si el equipo se pierde o es robado', 'Para actualizar apps', 'No tiene uso'], 1, 'El borrado remoto protege la información corporativa ante pérdida o robo.'),
+      P('Usa su celular personal para el MFA corporativo. ¿Aplica esta política?', ['No, solo aplica a tablets', 'Sí, el MFA es un uso laboral cubierto', 'Solo si es de la empresa', 'Solo fuera de horario'], 1, 'Los dispositivos usados para MFA están cubiertos.'),
+      P('¿Qué debe hacer con el sistema operativo de su tablet usada para trabajo?', ['Nunca actualizarlo', 'Mantenerlo al día', 'Desinstalarlo', 'Actualizarlo solo si IT lo pide por escrito'], 1, 'La política exige mantener el sistema operativo actualizado.')
+    ],
+    'DOC-003': [
+      P('Necesita una herramienta que no está aprobada por IT. ¿Qué corresponde?', ['Instalarla y avisar después', 'Presentar una solicitud formal con justificación', 'Pedirle a un compañero que la instale', 'Usar una versión portable'], 1, 'Las excepciones requieren solicitud formal y justificación.'),
+      P('¿A nombre de quién queda registrado el hardware asignado?', ['Del área de IT', 'Del colaborador que lo recibe', 'Del proveedor', 'De nadie'], 1, 'Todo equipo asignado queda registrado a nombre del colaborador.'),
+      P('¿Qué regula la política de Control de Software y Hardware?', ['Solo el horario de trabajo', 'La instalación, el licenciamiento y el inventario de software y hardware', 'Los viajes', 'Las vacaciones'], 1, 'Cubre instalación, licenciamiento e inventario.')
+    ],
+    'DOC-004': [
+      P('¿Dónde debe ir visible la etiqueta de clasificación?', ['En el nombre del archivo solamente', 'En el encabezado del documento', 'En un correo aparte', 'No tiene que ser visible'], 1, 'La etiqueta debe ir visible en el encabezado.'),
+      P('¿Quién debe clasificar un documento antes de compartirlo?', ['Solo el área legal', 'Quien lo crea o lo recibe', 'El cliente', 'IT'], 1, 'Quien crea o recibe un documento es responsable de clasificarlo.'),
+      P('¿Debe clasificarse un documento que solo se compartirá internamente?', ['No, solo los externos', 'Sí, incluso internamente', 'Solo si es largo', 'Solo si tiene datos financieros'], 1, 'La clasificación aplica también a lo que se comparte internamente.')
+    ],
+    'DOC-005': [
+      P('¿El uso personal ocasional de una laptop corporativa está permitido?', ['Nunca', 'Sí, si es razonable y no interfiere con el trabajo', 'Sí, sin límites', 'Solo para juegos'], 1, 'Se tolera el uso personal ocasional razonable.'),
+      P('¿Para qué se entregan principalmente los bienes y servicios de la organización?', ['Para uso familiar', 'Para fines laborales', 'Para venderlos', 'Para préstamos a terceros'], 1, 'Los bienes y servicios son para uso laboral.'),
+      P('Un colaborador usa repetidamente el vehículo corporativo para fines personales. ¿Qué puede pasar?', ['Nada', 'Una medida disciplinaria por uso indebido reiterado', 'Un ascenso', 'Una devolución de gastos'], 1, 'El uso indebido reiterado puede derivar en medidas disciplinarias.')
+    ],
+    'DOC-006': [
+      P('¿Quién publica y actualiza el catálogo de software permitido?', ['Cada colaborador', 'IT', 'El cliente', 'Recursos Humanos'], 1, 'El catálogo lo publica y actualiza IT.'),
+      P('¿Qué debe incluir la solicitud de un software fuera del catálogo?', ['Nada en particular', 'Una justificación de negocio', 'El precio de mercado solamente', 'La opinión de un amigo'], 1, 'Toda excepción requiere justificación de negocio.'),
+      P('Un software gratuito no está en el catálogo. ¿Puede instalarlo libremente?', ['Sí, por ser gratuito', 'No, igual requiere solicitud y aprobación de IT', 'Sí, si es de código abierto', 'Sí, si lo desinstala luego'], 1, 'Que sea gratuito no lo exime del catálogo.')
+    ],
+    'DOC-007': [
+      P('¿Reportar a tiempo un incidente puede ser motivo de sanción?', ['Sí, siempre', 'No, el reporte oportuno no es motivo de sanción', 'Depende del área', 'Solo si fue un error propio'], 1, 'El reporte oportuno nunca es motivo de sanción.'),
+      P('Sospecha que su cuenta fue comprometida, pero no está seguro. ¿Qué hace?', ['Espera a confirmarlo', 'Lo reporta igual: también se reportan las sospechas', 'Cambia la contraseña y no avisa', 'Lo comenta en el almuerzo'], 1, 'Se reportan los incidentes y también las sospechas.'),
+      P('¿Qué información protege la política de seguridad?', ['Solo la del cliente', 'La de la organización y la de sus clientes', 'Solo la financiera', 'Solo la pública'], 1, 'Protege la información de la organización y de sus clientes.')
+    ],
+    /* ---- Etapa 2 ---- */
+    'DOC-008': [
+      P('¿Qué debe hacerse con el contenido que genera una herramienta de IA?', ['Publicarlo directamente', 'Revisarlo por una persona antes de usarlo', 'Borrarlo siempre', 'Enviarlo al cliente sin cambios'], 1, 'Todo resultado generado por IA debe ser revisado.'),
+      P('¿Puede ingresar credenciales de acceso en una herramienta de IA?', ['Sí, si es corporativa', 'No, nunca', 'Solo las de prueba', 'Solo cifradas'], 1, 'Las credenciales nunca se ingresan en herramientas de IA.'),
+      P('¿Cuál de estas herramientas de IA puede usar para el trabajo?', ['Cualquiera popular', 'Las del catálogo corporativo con cuenta corporativa', 'La que recomiende un cliente', 'Cualquiera gratuita'], 1, 'Solo las del catálogo corporativo autorizado.')
+    ],
+    'DOC-009': [
+      P('¿Cómo deben gestionarse las contraseñas corporativas?', ['En una libreta', 'Con el gestor de contraseñas corporativo', 'En un archivo de texto en el escritorio', 'Memorizando una sola para todo'], 1, 'Es obligatorio usar el gestor de contraseñas corporativo.'),
+      P('¿Las contraseñas corporativas deben renovarse?', ['Nunca', 'Sí, periódicamente', 'Solo si las olvida', 'Solo al cambiar de equipo'], 1, 'Las contraseñas se renuevan periódicamente.'),
+      P('Un compañero le pide su contraseña para terminar una tarea urgente. ¿Qué hace?', ['Se la da por esta vez', 'No la comparte; él debe pedir su propio acceso', 'Se la dicta por teléfono', 'Le presta su sesión abierta'], 1, 'Compartir credenciales está prohibido incluso de forma temporal.')
+    ],
+    'DOC-010': [
+      P('¿Por cuánto tiempo se conservan los datos personales?', ['Para siempre', 'Solo el tiempo necesario para su finalidad', 'Un año fijo', 'Hasta que alguien los borre'], 1, 'Los datos se conservan solo el tiempo necesario.'),
+      P('¿Qué principio describe recopilar solo lo estrictamente necesario?', ['Maximización', 'Minimización', 'Publicidad', 'Retención'], 1, 'Es el principio de minimización.'),
+      P('Un cliente pide que se eliminen sus datos personales. ¿Qué hace?', ['Los borra usted mismo de inmediato', 'Canaliza la solicitud al equipo de privacidad', 'Ignora el pedido', 'Le responde que no es posible'], 1, 'Las solicitudes de titulares se canalizan al equipo de privacidad.')
+    ],
+    'DOC-011': [
+      P('¿Para qué es principalmente la conexión a internet corporativa?', ['Para entretenimiento', 'Para fines laborales', 'Para descargas personales', 'Para minería de criptomonedas'], 1, 'La conexión corporativa es para fines laborales.'),
+      P('¿El tráfico de la red corporativa puede ser monitoreado?', ['No, nunca', 'Sí, la política contempla el monitoreo de tráfico', 'Solo de los managers', 'Solo los fines de semana'], 1, 'El documento incluye el monitoreo de tráfico.'),
+      P('¿Puede acceder a contenido ilegal desde la red corporativa si es fuera de horario?', ['Sí, fuera de horario', 'No, está prohibido siempre', 'Sí, con VPN personal', 'Solo desde el celular'], 1, 'El contenido ilegal está prohibido en todo momento.')
+    ],
+    'DOC-012': [
+      P('¿Quién autoriza los dispositivos de almacenamiento que pueden usarse?', ['Cada colaborador', 'IT', 'El proveedor', 'El cliente'], 1, 'Los dispositivos deben estar autorizados por IT.'),
+      P('¿Qué característica deben tener los USB usados con información corporativa?', ['Ser de color corporativo', 'Estar cifrados', 'Tener más de 64 GB', 'Ser nuevos'], 1, 'Solo se usan dispositivos cifrados.'),
+      P('¿Puede copiar información Interna a un USB cifrado y autorizado por IT?', ['No, nunca', 'Sí, porque cumple las condiciones de la política', 'Solo si es Restringida', 'Solo en papel'], 1, 'Con dispositivo cifrado y autorizado se cumple la política (salvo información Restringida en dispositivos personales).')
+    ],
+    /* ---- Engineering ---- */
+    'DOC-013': [
+      P('¿Qué entradas deben validarse según Desarrollo Seguro?', ['Solo las del administrador', 'Toda entrada del usuario o de sistemas externos', 'Ninguna', 'Solo las numéricas'], 1, 'Se valida toda entrada de datos.'),
+      P('¿Cómo se mantienen las librerías de terceros?', ['Nunca se actualizan', 'Actualizadas conforme al calendario de parches', 'Solo al final del proyecto', 'Las actualiza el cliente'], 1, 'Se mantienen actualizadas según el calendario de parches.'),
+      P('¿En qué etapas aplica Desarrollo Seguro?', ['Solo en producción', 'Al diseñar, construir y desplegar software', 'Solo en pruebas', 'Solo en la documentación'], 1, 'Aplica a diseño, construcción y despliegue.')
+    ],
+    'DOC-014': [
+      P('¿Con quién puede compartirse la información confidencial de un cliente?', ['Con cualquier colega', 'Solo con el equipo del proyecto, salvo autorización escrita', 'En redes sociales', 'Con otros clientes'], 1, 'Solo dentro del equipo del proyecto sin autorización escrita.'),
+      P('¿Puede mencionar el nombre del proyecto de un cliente en su perfil profesional?', ['Sí, siempre', 'No, sin autorización escrita', 'Sí, si ya terminó', 'Sí, si no pone el logo'], 1, 'Nombres de proyecto requieren autorización escrita.'),
+      P('¿Qué información del cliente cubre esta política?', ['Solo el contrato', 'Código, arquitectura, datos de producción y comunicaciones del proyecto', 'Solo los correos', 'Solo las facturas'], 1, 'Cubre código, arquitectura, datos y comunicaciones.')
+    ],
+    'DOC-017': [
+      P('¿Cuántas revisiones aprobadas necesita como mínimo un pull request a la rama principal?', ['Ninguna', 'Al menos una', 'Diez', 'Solo la del autor'], 1, 'Se requiere al menos una revisión aprobada.'),
+      P('Subió por error un token al repositorio. ¿Qué es lo correcto?', ['Dejarlo, nadie lo verá', 'Tratarlo como incidente: revocarlo y moverlo a la bóveda', 'Cambiar el nombre del archivo', 'Hacer el repositorio privado y olvidarlo'], 1, 'Los secretos nunca deben estar en el repositorio.'),
+      P('¿Qué protege la regla de ramas protegidas?', ['El rendimiento del servidor', 'La rama principal frente a cambios sin revisión', 'Los correos', 'Las licencias'], 1, 'Evita cambios sin revisión en la rama principal.')
+    ],
+    'DOC-018': [
+      P('¿Con quién se acuerdan las ventanas de despliegue a producción?', ['Con nadie', 'Con el cliente', 'Solo con el equipo de QA', 'Con el proveedor de nube'], 1, 'Las ventanas se acuerdan con el cliente.'),
+      P('¿Qué es un plan de reversión?', ['Un plan de vacaciones', 'Los pasos para volver al estado anterior si el despliegue falla', 'Una lista de tareas pendientes', 'Un contrato'], 1, 'Permite revertir si el despliegue falla.'),
+      P('¿Puede desplegar un cambio urgente directamente a producción saltando ambientes?', ['Sí, si es urgente', 'No, todo cambio pasa por los ambientes previos', 'Sí, de noche', 'Sí, si lo hace el líder'], 1, 'La promoción entre ambientes es obligatoria.')
+    ],
+    /* ---- Quality Control ---- */
+    'DOC-019': [
+      P('¿Cuándo se verifica un entregable?', ['Después de enviarlo', 'Antes de enviarlo al cliente', 'Solo si el cliente reclama', 'Al final del año'], 1, 'La verificación se hace antes del envío.'),
+      P('¿Para qué sirve el registro de la verificación?', ['Para nada', 'Como evidencia de calidad', 'Para calcular sueldos', 'Para publicidad'], 1, 'El registro sirve como evidencia de calidad.'),
+      P('Un entregable no cumple un criterio de aceptación. ¿Puede enviarse?', ['Sí, igual', 'No, debe corregirse y verificarse antes', 'Sí, con una disculpa', 'Sí, si el plazo vence'], 1, 'Debe cumplir los criterios acordados antes de enviarse.')
+    ],
+    'DOC-020': [
+      P('¿Según qué se asigna la severidad de un defecto?', ['Según quién lo encontró', 'Según el impacto en el usuario', 'Según el día', 'Al azar'], 1, 'La severidad depende del impacto en el usuario.'),
+      P('¿Qué permite el paso a paso en el reporte de un defecto?', ['Nada', 'Reproducirlo', 'Ocultarlo', 'Cerrarlo sin revisar'], 1, 'Los pasos permiten reproducir el defecto.'),
+      P('¿Qué evidencia conviene adjuntar a un defecto?', ['Ninguna', 'Capturas o registros que lo muestren', 'Una canción', 'El currículum del tester'], 1, 'La evidencia ayuda a entender y reproducir el defecto.')
+    ],
+    'DOC-021': [
+      P('¿Qué son los criterios de salida de un plan de pruebas?', ['Las salidas de emergencia', 'Las condiciones para dar por terminadas las pruebas', 'El horario', 'Los costos'], 1, 'Definen cuándo se terminan las pruebas.'),
+      P('¿El plan de pruebas define los ambientes y datos a usar?', ['No', 'Sí', 'Solo los datos', 'Solo los ambientes'], 1, 'Incluye ambientes y datos.'),
+      P('Cambia el alcance funcional del proyecto. ¿Qué pasa con el plan de pruebas?', ['Se mantiene igual', 'Se actualiza', 'Se elimina', 'Se envía al cliente sin cambios'], 1, 'El plan se actualiza ante cambios de alcance.')
+    ],
+    'DOC-022': [
+      P('¿Qué tipo de pruebas se recomienda mantener manuales?', ['Las de regresión', 'Las exploratorias', 'Las de alto riesgo', 'Las repetitivas'], 1, 'Las exploratorias se mantienen manuales.'),
+      P('¿Dónde se integran las pruebas automatizadas?', ['En un correo', 'En el pipeline de integración', 'En un documento Word', 'En ningún lado'], 1, 'Se integran al pipeline.'),
+      P('¿Qué aporta automatizar la regresión?', ['Nada', 'Detectar rápido si un cambio rompió algo existente', 'Eliminar el control de calidad', 'Reemplazar los requisitos'], 1, 'La regresión automatizada detecta roturas rápidamente.')
+    ],
+    'DOC-023': [
+      P('¿Qué significa anonimizar datos de prueba?', ['Copiarlos tal cual', 'Quitar o reemplazar lo que identifica a una persona', 'Cifrar el disco', 'Borrar la base completa'], 1, 'Anonimizar elimina la posibilidad de identificar a la persona.'),
+      P('¿Qué clasificación de criticidad tiene esta política?', ['Baja', 'Alta', 'Ninguna', 'Media'], 1, 'Es una política de criticidad alta.'),
+      P('Terminó el ciclo de pruebas. ¿Puede guardar la base de datos de prueba "por si acaso"?', ['Sí', 'No, los datos de prueba se eliminan al cerrar el ciclo', 'Sí, en su equipo personal', 'Sí, en un USB'], 1, 'Se eliminan al cerrar el ciclo.')
+    ],
+    /* ---- Project Management ---- */
+    'DOC-024': [
+      P('¿Cuántas fases tiene la metodología de proyectos?', ['Dos', 'Cinco: inicio, planificación, ejecución, control y cierre', 'Diez', 'Una'], 1, 'Son cinco fases.'),
+      P('¿En qué fase se elabora el cronograma?', ['Cierre', 'Planificación', 'Ninguna', 'Después del cierre'], 1, 'El cronograma es obligatorio desde la planificación.'),
+      P('¿Qué documento formaliza el arranque de un proyecto?', ['La factura', 'El acta de inicio', 'La minuta de cierre', 'El organigrama'], 1, 'El acta de inicio formaliza el arranque.')
+    ],
+    'DOC-025': [
+      P('¿Desde cuándo se identifican los riesgos de un proyecto?', ['Al final', 'Desde el inicio', 'Cuando ocurren', 'Nunca'], 1, 'Se identifican desde el inicio.'),
+      P('¿Qué significa asignar un responsable a un riesgo?', ['Culpar a alguien', 'Que alguien hace su seguimiento y su plan de respuesta', 'Nada', 'Informar al cliente'], 1, 'El responsable da seguimiento al riesgo.'),
+      P('¿Dónde se revisa el registro de riesgos?', ['En la fiesta de fin de año', 'En las reuniones de seguimiento con el cliente', 'En privado', 'No se revisa'], 1, 'Se revisa en cada reunión de seguimiento.')
+    ],
+    'DOC-026': [
+      P('¿Por qué canal se confirman los acuerdos con el cliente?', ['WhatsApp personal', 'Canales corporativos, por escrito', 'De palabra', 'Redes sociales'], 1, 'Por escrito en canales corporativos.'),
+      P('¿Qué debe registrar una minuta?', ['Solo la fecha', 'Acuerdos, responsables y fechas', 'El menú del almuerzo', 'Solo los asistentes'], 1, 'Acuerdos, responsables y fechas.'),
+      P('Acordó un cambio con el cliente en una llamada. ¿Qué hace después?', ['Nada', 'Lo confirma por escrito', 'Espera que el cliente lo recuerde', 'Lo comenta en un pasillo'], 1, 'Todo acuerdo se confirma por escrito.')
+    ],
+    /* ---- People & Culture ---- */
+    'DOC-027': [
+      P('¿Qué regula el Reglamento Interno de Trabajo?', ['Solo los viajes', 'Derechos, obligaciones, jornada y régimen disciplinario', 'Los precios', 'Las campañas de marketing'], 1, 'Regula derechos, obligaciones, jornada y disciplina.'),
+      P('¿Qué se rige por este reglamento además de la jornada?', ['El clima', 'Los descansos y el registro de asistencia', 'El tráfico', 'El código de los sistemas'], 1, 'Incluye descansos y registro de asistencia.'),
+      P('¿Antes de aplicar una sanción, qué derecho tiene el colaborador?', ['Ninguno', 'Presentar su descargo', 'Elegir la sanción', 'Cambiar de área'], 1, 'El procedimiento incluye un descargo.')
+    ],
+    'DOC-028': [
+      P('¿Qué tipo de información protege esta política?', ['Solo el nombre', 'Personal, salarial y médica de los colaboradores', 'Solo la de clientes', 'La pública'], 1, 'Protege información personal, salarial y médica.'),
+      P('Un manager le pide el salario de un colaborador de otra área. ¿Qué hace?', ['Se lo da', 'No lo comparte sin base legal o consentimiento', 'Se lo envía por chat', 'Lo publica'], 1, 'Se requiere base legal o consentimiento.'),
+      P('¿Quiénes acceden a los legajos del personal?', ['Todos', 'Solo personal autorizado de People & Culture', 'Los clientes', 'Los proveedores'], 1, 'Solo personal autorizado.')
+    ],
+    'DOC-029': [
+      P('¿Qué tipo de entrevistas indica el procedimiento?', ['Improvisadas', 'Estructuradas', 'Solo por chat', 'Ninguna'], 1, 'Las entrevistas son estructuradas.'),
+      P('¿Con qué termina el proceso de selección?', ['Con una llamada informal', 'Con una oferta formal', 'Con un correo sin firma', 'Con el primer día'], 1, 'Termina con una oferta formal.'),
+      P('¿Puede descartarse a un candidato por su edad?', ['Sí', 'No, las decisiones evitan sesgos por edad, género u origen', 'Solo si es muy joven', 'Depende del puesto'], 1, 'El procedimiento prohíbe esos sesgos.')
+    ],
+    'DOC-030': [
+      P('¿Qué se recupera cuando un colaborador deja la empresa?', ['Nada', 'Todos los activos asignados', 'Solo la credencial', 'Solo el uniforme'], 1, 'Se recuperan todos los activos asignados.'),
+      P('¿Qué se asigna al nuevo colaborador durante el onboarding?', ['Un escritorio solamente', 'La ruta de inducción, accesos y activos', 'Un bono', 'Nada'], 1, 'Incluye ruta de inducción, accesos y activos.'),
+      P('¿Por qué los accesos se revocan el último día?', ['Por costumbre', 'Para evitar accesos indebidos tras la salida', 'Para ahorrar licencias únicamente', 'No es necesario'], 1, 'Evita accesos indebidos después de la salida.')
+    ],
+    /* ---- Finance ---- */
+    'DOC-015': [
+      P('Cambió de oficina con su laptop asignada. ¿Qué debe hacer?', ['Nada', 'Reportar el cambio de ubicación del activo', 'Venderla', 'Prestarla'], 1, 'El custodio reporta cambios de ubicación.'),
+      P('¿Qué etapas del activo fijo cubre el manual?', ['Solo la compra', 'Alta, transferencia, mantenimiento y baja', 'Solo la baja', 'Solo el inventario'], 1, 'Cubre todo el ciclo del activo.'),
+      P('¿Qué área aprueba la baja de un activo?', ['Marketing', 'Procurement and Asset Control', 'El colaborador', 'El cliente'], 1, 'La aprueba Procurement and Asset Control.')
+    ],
+    'DOC-016': [
+      P('¿Qué se emite después de obtener las aprobaciones requeridas?', ['Una factura', 'La orden de compra', 'Un despido', 'Nada'], 1, 'Con las aprobaciones se emite la orden de compra.'),
+      P('¿Qué información incluye la solicitud de compra?', ['Solo el proveedor', 'Bien o servicio, monto estimado y justificación', 'Solo el color', 'Nada'], 1, 'Incluye bien, monto estimado y justificación.'),
+      P('Una compra de monto alto, ¿requiere más o menos aprobaciones que una de monto bajo?', ['Menos', 'Más niveles de aprobación', 'Las mismas, siempre', 'Ninguna'], 1, 'El monto determina los niveles de aprobación.')
+    ],
+    'DOC-031': [
+      P('¿A nombre de quién deben estar los comprobantes de gasto?', ['Del colaborador', 'De la empresa', 'Del hotel', 'De nadie'], 1, 'Los comprobantes deben estar a nombre de la empresa.'),
+      P('Regresó de un viaje el lunes. ¿Hasta cuándo puede rendir?', ['Hasta fin de año', 'Dentro de 5 días hábiles', 'Cuando quiera', 'El mismo día únicamente'], 1, 'El plazo es de 5 días hábiles.'),
+      P('Perdió la factura de una comida del viaje. ¿Qué implica?', ['Nada', 'Ese gasto no queda respaldado con comprobante válido', 'Se aprueba igual', 'Se duplica el reembolso'], 1, 'Cada gasto debe tener comprobante válido.')
+    ],
+    'DOC-032': [
+      P('¿Puede facturarse un hito que el cliente todavía no aceptó?', ['Sí', 'No, solo hitos aceptados y registrados', 'Sí, a fin de mes', 'Sí, si es urgente'], 1, 'Solo se factura contra hitos aceptados.'),
+      P('¿A quién se avisa cuando un cobro vence?', ['A nadie', 'Al responsable de la cuenta', 'A todo el personal', 'Al proveedor'], 1, 'Se avisa al responsable de la cuenta.'),
+      P('¿Dónde debe estar registrado un hito antes de facturarlo?', ['En una nota personal', 'En el sistema', 'En una pizarra', 'En ningún lado'], 1, 'Los hitos se registran en el sistema.')
+    ],
+    'DOC-033': [
+      P('¿Qué porcentaje de desvío requiere justificación y aprobación?', ['1%', 'Más del 10%', '50%', 'Ninguno'], 1, 'Los desvíos mayores al 10%.'),
+      P('¿Quién aprueba los desvíos presupuestarios relevantes?', ['El cliente', 'Finance', 'Cualquier colaborador', 'Marketing'], 1, 'Requieren aprobación de Finance.'),
+      P('¿De qué es responsable cada área respecto de su presupuesto?', ['De nada', 'De ejecutarlo y controlarlo según lo aprobado', 'Solo de gastarlo', 'De ocultarlo'], 1, 'Cada área ejecuta y controla su presupuesto.')
+    ],
+    'DOC-034': [
+      P('¿Qué documento acredita que el bien o servicio fue recibido?', ['La cotización', 'La conformidad de recepción', 'El correo de bienvenida', 'El contrato laboral'], 1, 'La conformidad de recepción acredita la entrega.'),
+      P('Un proveedor pide que se le pague fuera de ciclo. ¿Qué corresponde?', ['Pagarle de inmediato', 'Respetar los ciclos quincenales definidos por Finance', 'Pagarle en efectivo', 'Ignorarlo'], 1, 'Los pagos se procesan en los ciclos definidos.'),
+      P('¿Puede pagarse una factura sin orden de compra?', ['Sí', 'No, se requiere orden de compra', 'Sí, si es pequeña', 'Sí, si el proveedor es conocido'], 1, 'La orden de compra es requisito.')
+    ],
+    /* ---- IT & Infrastructure ---- */
+    'DOC-035': [
+      P('¿Quién aprueba la solicitud de acceso de un colaborador?', ['Él mismo', 'Su manager', 'El cliente', 'Nadie'], 1, 'El manager del colaborador aprueba la solicitud.'),
+      P('¿Qué se hace con los accesos privilegiados que ya no se usan?', ['Se conservan', 'Se revocan', 'Se comparten', 'Se duplican'], 1, 'Los accesos sin uso se revocan.'),
+      P('¿Qué significa mínimo privilegio?', ['Dar todos los permisos', 'Dar solo los permisos necesarios para la tarea', 'No dar permisos', 'Dar permisos de administrador a todos'], 1, 'Solo lo necesario para la tarea.')
+    ],
+    'DOC-036': [
+      P('¿Qué datos se registran en un incidente de TI?', ['Solo la hora', 'Impacto, urgencia y servicio afectado', 'El nombre del culpable', 'Nada'], 1, 'Se registran impacto, urgencia y servicio afectado.'),
+      P('¿A quién se informa un incidente crítico?', ['A nadie', 'Al cliente afectado', 'A la prensa', 'Solo al proveedor'], 1, 'Se informa al cliente afectado.'),
+      P('Un servidor crítico se cae. ¿Cuándo debe atenderse?', ['Mañana', 'De inmediato', 'En la próxima ventana mensual', 'Cuando haya tiempo'], 1, 'Los incidentes críticos se atienden de inmediato.')
+    ],
+    'DOC-037': [
+      P('¿Dónde se guardan los respaldos?', ['En el mismo servidor', 'Cifrados y fuera del sitio', 'En un USB personal', 'En el escritorio'], 1, 'Se guardan cifrados fuera del sitio.'),
+      P('¿Por qué se prueba la recuperación?', ['Por trámite', 'Para asegurar que los respaldos realmente sirven', 'Para ocupar tiempo', 'No se prueba'], 1, 'Probar garantiza que el respaldo sea recuperable.'),
+      P('¿Qué sistemas se respaldan diariamente?', ['Ninguno', 'Los sistemas críticos', 'Solo las impresoras', 'Solo los correos personales'], 1, 'Los sistemas críticos se respaldan a diario.')
+    ],
+    'DOC-038': [
+      P('¿Qué análisis acompaña a un cambio en infraestructura productiva?', ['Ninguno', 'Un análisis de impacto', 'Un análisis de precios', 'Una encuesta'], 1, 'Se presenta un análisis de impacto.'),
+      P('¿Qué cambios pasan por el comité de cambios?', ['Ninguno', 'Todo cambio en infraestructura productiva', 'Solo los de oficina', 'Solo los de software de escritorio'], 1, 'Todo cambio productivo pasa por el comité.'),
+      P('Aplicó un cambio de red. ¿Qué debe quedar registrado?', ['Nada', 'Fecha, responsable y resultado', 'Solo que fue exitoso', 'Solo el costo'], 1, 'Se registran fecha, responsable y resultado.')
+    ]
+  };
+  documentos.forEach(d => { if (preguntasExtra[d.id]) d.preguntas = d.preguntas.concat(preguntasExtra[d.id].map(p => ({ ...p, docId: d.id }))); });
+
+  // La respuesta correcta se distribuye entre A, B, C y D (de forma fija, para que
+  // la demo sea reproducible) en lugar de quedar casi siempre en la misma posición.
+  documentos.forEach((d, di) => d.preguntas.forEach((p, qi) => {
+    const destino = (di + qi * 3) % p.o.length;
+    const correcta = p.o[p.r];
+    const resto = p.o.filter((_, i) => i !== p.r);
+    resto.splice(destino, 0, correcta);
+    p.o = resto; p.r = destino;
+  }));
+
+  // Las evaluaciones por documento se arman en app.js a partir de `documentos[].preguntas`.
+  const evaluaciones = [];
 
   /* ---------- Campañas de micro aprendizaje ----------
      Refuerzos periódicos independientes de las etapas: siguen enviando
