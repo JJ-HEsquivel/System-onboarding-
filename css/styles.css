@@ -563,3 +563,65 @@ table{border-collapse:collapse;width:100%}
   *{animation-duration:.001ms !important;transition-duration:.001ms !important}
 }
 
+
+/* ============================================================
+   MODO DE DATOS · fecha simulada · ascensos
+   ============================================================ */
+.modesw{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid var(--line);border-radius:var(--r);background:#F7F9FC;margin-bottom:8px}
+.modesw button{padding:8px 10px;border-radius:7px;font-size:12.8px;font-weight:600;color:var(--text-2)}
+.modesw button:hover{background:#fff}
+.modesw button[aria-pressed="true"]{background:#fff;color:var(--brand);box-shadow:var(--sh-1)}
+.modeinfo{font-size:12.2px;color:var(--muted);margin:0 0 18px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+.modeinfo button{font-size:12.2px;color:var(--danger);font-weight:600;white-space:nowrap}
+.modeinfo button:hover{text-decoration:underline}
+.sel{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff}
+.login__empty{font-size:12.6px;color:var(--warn);background:var(--warn-050);border-radius:var(--r-sm);padding:10px 12px;margin:0}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.modechip{margin-left:auto;display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;border:1px solid var(--line);font-size:12px;color:var(--text-2);background:#fff;white-space:nowrap}
+.modechip:hover{border-color:#C7D2E4}
+.modechip i{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.modechip.is-cero i{background:var(--ok)}
+.top__search{margin-left:14px}
+
+.steps4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.steps4 > div{padding:14px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+.steps4 b{display:block;margin:9px 0 5px;font-size:13.4px}
+.steps4 p{margin:0}
+.checklist{display:grid;gap:4px;max-height:260px;overflow:auto;border:1px solid var(--line-soft);border-radius:var(--r);padding:6px 10px}
+.checklist label{display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer}
+.checklist input{width:16px;height:16px;flex:none}
+.bullets{margin:0;padding-left:18px;font-size:13.2px;color:var(--text-2)}
+.bullets li{margin:4px 0}
+@media (max-width:1024px){ .steps4{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:720px){ .steps4{grid-template-columns:1fr} .modechip span{display:none} }
+.rolecard__t,.rolecard__s{display:block}
+
+/* Login: el panel se desplaza si no entra en la pantalla (el botón nunca queda oculto)
+   y se compacta un poco en pantallas bajas */
+.login__panel{overflow-y:auto;align-items:flex-start;padding:32px 40px}
+.login__box{margin:auto 0}
+@media (max-height:900px){
+  .login__panel{padding:20px 40px}
+  .login__box > p{margin:4px 0 16px}
+  .login__roles{gap:8px;margin-bottom:14px}
+  .rolecard{padding:9px 12px}
+  .rolecard__av{width:32px;height:32px}
+  .rolecard__s{font-size:12px;line-height:1.35}
+  .field{margin-bottom:10px}
+  .field input,.sel{padding:9px 12px}
+  .modeinfo{margin-bottom:12px}
+  .login__note{margin-top:10px}
+}
+
+/* Pasos de un documento: Lectura → Examen → Aprobado */
+.pasos{display:inline-flex;align-items:center;gap:4px}
+.pasos i{width:10px;height:1px;background:var(--line)}
+.paso{font-size:11px;padding:1px 7px;border-radius:10px;background:#F1F4F9;color:var(--muted);font-weight:560}
+.paso--ok{background:var(--ok-050);color:var(--ok)}
+.paso--now{background:var(--brand-050);color:var(--brand)}
+.aviso-mgr{display:flex;gap:14px;align-items:center;padding:14px 18px;border:1px solid #D6E1FB;background:var(--brand-050);border-radius:var(--r);margin-bottom:16px}
+.aviso-mgr b{display:block;font-size:14px}
+.aviso-mgr p{margin:3px 0 0;font-size:13px;color:var(--text-2)}
+.aviso-mgr .feed__i{flex:none}
+.pop__i.is-new{background:var(--brand-050)}

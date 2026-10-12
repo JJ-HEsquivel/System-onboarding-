@@ -30,24 +30,28 @@
       <p>Asignación automática de documentación, evaluaciones generadas con IA, refuerzo continuo y evidencia lista para auditoría.</p>
     </div>
 
-    <div class="login__stats">
-      <div><b class="num">248</b><small>Colaboradores activos</small></div>
-      <div><b class="num">12</b><small>Documentos controlados</small></div>
-      <div><b class="num">89%</b><small>Cumplimiento de lectura</small></div>
-    </div>
+    <div class="login__stats" id="loginStats"></div>
   </div>
 
   <div class="login__panel">
     <div class="login__box">
       <h2>Ingresar a la plataforma</h2>
-      <p>Seleccione el perfil con el que desea recorrer la demostración.</p>
+      <p>Elija con qué datos trabajar y el perfil con el que desea ingresar.</p>
+
+      <span class="login__label">Datos de la demostración</span>
+      <div class="modesw" id="modeSw" role="group" aria-label="Datos de la demostración">
+        <button type="button" data-modo="demo">Datos de ejemplo</button>
+        <button type="button" data-modo="cero">Empezar desde cero</button>
+      </div>
+      <div class="modeinfo" id="modeInfo"></div>
 
       <span class="login__label">Perfil de acceso</span>
       <div class="login__roles" id="roleList"></div>
 
-      <div class="field hide" id="colabSelWrap">
-        <span class="login__label">Cuenta de colaborador</span>
-        <select id="colabSel" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px;background:#fff"></select>
+      <div class="field" id="cuentaWrap">
+        <span class="login__label" id="cuentaLbl">Cuenta</span>
+        <select id="cuentaSel" class="sel"></select>
+        <p class="login__empty hide" id="cuentaVacia"></p>
       </div>
 
       <div class="field">
@@ -60,7 +64,7 @@
       </div>
 
       <button class="btn btn--primary btn-block" id="loginBtn">Ingresar</button>
-      <p class="login__note">Entorno de demostración con datos simulados. No se transmite información real.</p>
+      <p class="login__note">Entorno de demostración. Los cambios se guardan solo en este navegador.</p>
     </div>
   </div>
 </section>
@@ -94,6 +98,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
     <div class="top__crumb" id="crumb"></div>
+    <button class="modechip" id="modeChip" title="Fecha simulada y datos de la demostración"></button>
 
     <div class="top__search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
