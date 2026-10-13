@@ -423,12 +423,14 @@ const DB = (() => {
   ];
 
   /* ---------- Fases de la ruta de inducción ---------- */
+  // Tres fases: alta → inducción (leer y aprobar cada documento) → refuerzo continuo.
   const fases = [
-    { n: 1, nombre: 'Registro y bienvenida',       detalle: 'Alta del colaborador, asignación de Manager y correo de bienvenida.' },
-    { n: 2, nombre: 'Lectura documental',          detalle: 'Lectura y confirmación de los documentos obligatorios asignados.' },
-    { n: 3, nombre: 'Evaluación de comprensión',   detalle: 'Evaluación generada por IA sobre los documentos leídos.' },
-    { n: 4, nombre: 'Documentación específica',    detalle: 'Documentos adicionales asignados por el Manager según el rol.' },
-    { n: 5, nombre: 'Cierre y evidencia',          detalle: 'Registro de evidencias de cumplimiento y habilitación operativa.' }
+    { n: 1, nombre: 'Registro y bienvenida',
+      detalle: 'El Administrador da de alta al colaborador y le asigna un Manager, que valida su documentación. Al confirmarla se envía el correo de bienvenida y se activa su ruta.' },
+    { n: 2, nombre: 'Proceso de inducción',
+      detalle: 'Lectura de cada documento asignado por etapas y aprobación de su examen. La inducción se completa cuando todos los documentos están aprobados.' },
+    { n: 3, nombre: 'Micro aprendizaje y actualización de documentos',
+      detalle: 'Refuerzo continuo con evaluaciones cortas periódicas y relectura obligatoria cuando un documento cambia de versión, para mantener vigente lo aprendido.' }
   ];
 
   /* ---------- Evaluaciones ----------
