@@ -616,7 +616,7 @@ const NAV = {
   colaborador: [
     { g: 'Mi inducción' },
     { id:'dashboard', t:'Mi progreso',       i:'home' },
-    { id:'misdocs',   t:'Mis documentos',    i:'book', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.documentosRuta.filter(d => d.estado === 'pendiente').length; } },
+    { id:'misdocs',   t:'Inducción',    i:'book', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.documentosRuta.filter(d => d.estado === 'pendiente').length; } },
     { id:'misevals',  t:'Mis evaluaciones',  i:'check', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.evaluacionesRuta.filter(e => e.estado === 'pendiente').length; }, alert:true },
     { g: 'Continuo' },
     { id:'mimicro',   t:'Micro aprendizaje', i:'zap', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : esCero() ? enviosPara(ca).filter(e => !e.respondido).length : S.pildoras.filter(p => p.estado === 'pendiente').length; } },
@@ -650,7 +650,7 @@ const TITULOS = {
   equipo:['Mi equipo','Avance de cada colaborador a su cargo y casos que requieren atención.'],
   validar:['Nuevos colaboradores por validar','Revise, ajuste y confirme la documentación antes de activar la ruta y avisar al colaborador.'],
   asignar:['Asignar documentos','Documentación específica adicional para los colaboradores de su equipo.'],
-  misdocs:['Mis documentos','Lectura obligatoria asignada y su estado de confirmación.'],
+  misdocs:['Inducción','Lea cada documento, confirme la lectura y rinda su examen: el documento suma al aprobarlo.'],
   misevals:['Mis evaluaciones','Evaluaciones de comprensión pendientes y resultados obtenidos.'],
   mimicro:['Micro aprendizaje','Píldoras cortas para mantener vigente lo aprendido.'],
   asistente:['Asistente documental','Consulte las políticas y procedimientos en lenguaje natural.'],
@@ -2149,26 +2149,6 @@ function vColabDashboard() {
           ${linea('Micro aprendizaje', `${microHechas} de ${microTotal} ${esCero() ? 'envíos' : 'píldoras'} respondidos · llegan después, como refuerzo`, pct(microHechas, microTotal), '#E8620F')}
         </div>
       </div>
-    </div>
-  </section>
-
-  <section class="card mt-16">
-    <div class="card__head"><div><h3>Su ruta de documentos</h3><p>Lea cada documento, confirme la lectura y rinda su examen · el documento suma al aprobarlo</p></div></div>
-    <div class="card__body">
-      ${etapasResumen(ca).map(et => `
-        <div class="etapa-card">
-          <div class="etapa-card__h"><b>${esc(et.nombre)}</b>
-            <span class="small muted">${et.docs.filter(md => estadoDoc(ca, md).k === 'aprobado').length} de ${et.total} aprobados</span></div>
-          <div class="doclist">
-            ${et.docs.map(md => { const d = doc(md.docId); if (!d) return ''; const st = estadoDoc(ca, md); return `
-              <div class="docitem" style="padding:10px 12px">
-                <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:30px;height:34px">${svg(ICO.file)}</span>
-                <span class="docitem__b"><b style="font-size:13.3px">${esc(d.titulo)}</b>
-                  <span class="docitem__m"><span>${d.minutos} min</span>${md.estado !== 'leido' && md.vence ? `<span>Vence ${fechaLarga(md.vence)}</span>` : ''}${pasosDoc(ca, md)}</span></span>
-                <span class="docitem__a"><span class="badge badge--${st.b}">${st.t}</span>${accionDoc(ca, md)}</span>
-              </div>`; }).join('')}
-          </div>
-        </div>`).join('') || vacio('Sin documentos asignados')}
     </div>
   </section>`;
 }
