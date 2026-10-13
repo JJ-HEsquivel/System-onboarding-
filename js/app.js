@@ -142,32 +142,15 @@ function reiniciarModo(modo) {
 
 const nuevoId = (pref) => { S.seq = (S.seq || 1000) + 1; return pref + S.seq; };
 
-/* Los managers también deben leer y aprobar su documentación. Cada Manager tiene
-   un registro de cumplimiento propio (como los ascendidos) con la ruta de su
-   área, que ve en "Mi cumplimiento". Responde ante un Administrador.
-   - Desde cero: arrancan con la ruta pendiente, como cualquier colaborador.
-   - Datos de ejemplo: son personal con antigüedad, con la ruta ya aprobada. */
+/* Un Manager ya pasó por la inducción: no tiene documentos pendientes ni cuenta en
+   los indicadores. Si llegó por ascenso, su registro de colaborador se conserva solo
+   como historial de lo que hizo. Esta función limpia registros de cumplimiento que
+   una versión anterior del prototipo creaba para los managers base. */
 function asegurarRutasManagers() {
-  const admin = (S.usuarios.find(u => u.rol === 'admin') || {}).nombre || 'Administración';
-  S.usuarios.filter(u => u.rol === 'manager' && !(u.colaboradorId && S.colaboradores.some(c => c.id === u.colaboradorId))).forEach(u => {
-    const c = { id: nuevoId('C-'), nombre: u.nombre, cargo: u.cargo, area: u.area, manager: admin,
-      ingreso: esCero() ? HOY : '2025-03-03', registradoPor: 'Sistema', estadoAlta: 'activo', rolActual: 'manager',
-      activadoEl: HOY, validadoPor: admin, fechaValidacion: ahora(),
-      fase: 2, progreso: 0, estado: 'por_iniciar', promedio: 0, pendientes: 0, ultimaActividad: 'Sin actividad', riesgo: 'bajo',
-      documentosRuta: [], evaluacionesRuta: [] };
-    const base = c.ingreso > HOY ? c.ingreso : HOY;
-    c.documentosRuta = rutaBaseParaArea(u.area).map(docId => {
-      const et = etapaDe(doc(docId));
-      return esCero()
-        ? { docId, etapaId: doc(docId).etapaId, estado: 'pendiente', confirmado: null, vence: sumarDias(base, S.config.plazoLectura * (et ? et.orden : 1)), origen: origenParaDoc(docId) }
-        : { docId, etapaId: doc(docId).etapaId, estado: 'leido', confirmado: '2025-03-10 · registrado', vence: '2025-03-14', origen: origenParaDoc(docId) };
-    });
-    sincronizarEvaluaciones(c);
-    if (!esCero()) c.evaluacionesRuta.forEach(e => Object.assign(e, { estado: 'aprobada', puntaje: 92, fecha: '2025-03-12 · registrado', intento: 1 }));
-    S.colaboradores.push(c);
-    u.colaboradorId = c.id;
-    recalcularColaborador(c);
-  });
+  const auto = S.colaboradores.filter(c => c.rolActual === 'manager' && c.registradoPor === 'Sistema').map(c => c.id);
+  if (!auto.length) return;
+  S.colaboradores = S.colaboradores.filter(c => !auto.includes(c.id));
+  S.usuarios.forEach(u => { if (auto.includes(u.colaboradorId)) delete u.colaboradorId; });
 }
 const esCero = () => S.modo === 'cero';
 
@@ -175,7 +158,8 @@ const doc  = (id) => S.documentos.find(d => d.id === id);
 const evalu = (id) => S.evaluaciones.find(e => e.id === id);
 const areaNom = (id) => (DB.areas.find(a => a.id === id) || {}).nombre || id;
 const managers = () => S.usuarios.filter(u => u.rol === 'manager');
-const activos = () => S.colaboradores.filter(c => c.estadoAlta === 'activo');
+const colabs = () => S.colaboradores.filter(c => c.rolActual !== 'manager');
+const activos = () => colabs().filter(c => c.estadoAlta === 'activo');
 const promedioDe = (lista) => { const v = lista.filter(c => c.promedio); return v.length ? Math.round(v.reduce((a, c) => a + c.promedio, 0) / v.length) : null; };
 const fmtPct = (v) => v == null ? '—' : v + '%';
 const recalcularTodos = () => S.colaboradores.forEach(recalcularColaborador);
@@ -292,7 +276,7 @@ function recalcularColaborador(c) {
   // Desde cero, cada envío de campaña ya recibido cuenta como pendiente hasta que se responde.
   // En los datos de ejemplo se mantiene la lógica original (una por campaña activa).
   const campPend = c.estadoAlta !== 'activo' ? 0
-    : esCero() ? enviosPara(c).filter(e => !e.respondido).length
+    : esCero() ? enviosPara(c).filter(e => e.abierto).length
     : campaniasPara(c.area).filter(cm => !(c.campaniasRespondidas || []).includes(cm.id)).length;
   c.pendientes = pendDocs + campPend;
 
@@ -336,6 +320,10 @@ function motivosAtencion(c) {
   if (c.estadoAlta === 'activo' && venc) m.push(`${venc} lectura(s) vencida(s)`);
   const rep = (c.evaluacionesRuta || []).filter(e => e.estado === 'reprobada');
   rep.forEach(e => { const ev = evalu(e.evId); m.push(`${e.intento >= S.config.intentos ? 'Intentos agotados en' : 'Reprobó'} ${ev ? ev.titulo.replace('Evaluación · ', '') : 'una evaluación'}`); });
+  if (c.estadoAlta === 'activo' && esCero()) {
+    const mr = microResumen(c);
+    if (mr.vencidas) m.push(`${mr.vencidas} microevaluación(es) vencida(s) sin responder${mr.solicitudes ? ` · solicitó el reenvío de ${mr.solicitudes}` : ''}`);
+  }
   if (c.estadoAlta === 'activo' && c.estado !== 'completado' && c.ultimaActividadFecha) {
     const sin = diasEntre(c.ultimaActividadFecha, HOY);
     if (sin >= S.config.recordatorioDias) m.push(`${sin} días sin actividad`);
@@ -413,9 +401,32 @@ function enviosPara(c) {
   const desde = c.activadoEl || '0000-00-00';
   return campaniasPara(c.area).flatMap(cm => (cm.evaluaciones || [])
     .filter(e => e.fecha <= HOY && e.fecha >= desde)
-    .map(e => ({ campId: cm.id, cm, n: e.n, fecha: e.fecha, preguntas: e.preguntas,
-      respondido: resp.find(r => r.campId === cm.id && r.n === e.n) || null })));
+    .map(e => {
+      const respondido = resp.find(r => r.campId === cm.id && r.n === e.n) || null;
+      // Se puede responder hasta que llega el siguiente envío de la campaña
+      // (1 día si es diaria, 7 si es semanal...). Si el Manager lo reenvía, se extiende.
+      const reenvio = (c.microReenvios || []).filter(r => r.campId === cm.id && r.n === e.n).pop();
+      const vence = reenvio ? reenvio.hasta : sumarDias(e.fecha, PERIODOS[cm.periodicidad] || 7);
+      const vencido = !respondido && HOY >= vence;
+      const solicitud = (c.microSolicitudes || []).find(r => r.campId === cm.id && r.n === e.n && r.estado === 'pendiente') || null;
+      return { campId: cm.id, cm, n: e.n, fecha: e.fecha, preguntas: e.preguntas, respondido, vence, vencido,
+        abierto: !respondido && !vencido, solicitud, reenviado: !!reenvio };
+    }));
 }
+
+/* Microevaluaciones de un colaborador: respondidas de recibidas (y vencidas) */
+function microResumen(c) {
+  if (esCero()) {
+    const env = enviosPara(c);
+    return { recibidas: env.length, respondidas: env.filter(e => e.respondido).length,
+      vencidas: env.filter(e => e.vencido).length, abiertas: env.filter(e => e.abierto).length,
+      solicitudes: env.filter(e => e.vencido && e.solicitud).length };
+  }
+  const rec = c.estadoAlta === 'activo' ? campaniasPara(c.area).length : 0;
+  const resp = Math.min(rec, (c.campaniasRespondidas || []).length);
+  return { recibidas: rec, respondidas: resp, vencidas: 0, abiertas: rec - resp, solicitudes: 0 };
+}
+const microCelda = (c) => { const m = microResumen(c); return `${m.respondidas} de ${m.recibidas}${m.vencidas ? ` <span class="badge badge--danger" title="Vencidas sin responder">${m.vencidas} vencida${m.vencidas > 1 ? 's' : ''}</span>` : ''}`; };
 
 /* ------------------------------------------------------------
    2.3 Siembra inicial: le da a cada colaborador una ruta real.
@@ -477,10 +488,10 @@ function inicializarRutas() {
 function destinatarios(destino) {
   const res = new Set();
   String(destino || '').replace(/^Grupo:s*/, '').split(/s·s|,s*/).map(t => t.trim()).filter(Boolean).forEach(t => {
-    if (t === 'Toda la organización') S.colaboradores.forEach(c => res.add(c.nombre));
+    if (t === 'Toda la organización') colabs().forEach(c => res.add(c.nombre));
     else if (DB.areas.some(a => a.nombre === t || a.id === t)) {
       const a = DB.areas.find(x => x.nombre === t || x.id === t);
-      S.colaboradores.filter(c => c.area === a.id).forEach(c => res.add(c.nombre));
+      colabs().filter(c => c.area === a.id).forEach(c => res.add(c.nombre));
     } else res.add(t);
   });
   return [...res];
@@ -507,12 +518,16 @@ function ejecutarAutomatizaciones() {
   S.colaboradores.forEach(c => {
     recalcularColaborador(c);
     // Las reglas por colaborador solo aplican a registros reales (no a la semilla de ejemplo)
-    if (c.estadoAlta !== 'activo' || !(esCero() || c.registradoPor)) return;
+    if (c.estadoAlta !== 'activo' || c.rolActual === 'manager' || !(esCero() || c.registradoPor)) return;
     if (c.estado === 'completado') {
+      enviosPara(c).filter(e => e.vencido).forEach(e => avisar(c, `micro-venc-${e.campId}-${e.n}-${e.vence}`, { tipo: 'vencimiento', titulo: 'Microevaluación vencida',
+        detalle: `No respondió «${e.cm.nombre}» (envío ${e.n}) antes del ${fechaLarga(e.vence)}. Solicite el reenvío desde Micro aprendizaje.`, destino: c.nombre }));
       avisar(c, 'ruta-completa', { tipo: 'bienvenida', titulo: 'Ruta completada',
         detalle: `${c.nombre} aprobó todos sus documentos. Constancia emitida y evidencia registrada.`, destino: `${c.nombre} · ${c.manager}` });
       return;
     }
+    enviosPara(c).filter(e => e.vencido).forEach(e => avisar(c, `micro-venc-${e.campId}-${e.n}-${e.vence}`, { tipo: 'vencimiento', titulo: 'Microevaluación vencida',
+      detalle: `No respondió «${e.cm.nombre}» (envío ${e.n}) antes del ${fechaLarga(e.vence)}. Solicite el reenvío desde Micro aprendizaje.`, destino: c.nombre }));
     c.documentosRuta.forEach(md => {
       const d = doc(md.docId);
       if (!d || md.estado !== 'pendiente' || !md.vence) return;
@@ -618,7 +633,7 @@ const NAV = {
   admin: [
     { g: 'Operación' },
     { id:'dashboard',    t:'Panel general',        i:'home' },
-    { id:'colaboradores',t:'Colaboradores',        i:'users', badge:() => S.colaboradores.filter(c => c.estado === 'atrasado').length, alert:true },
+    { id:'colaboradores',t:'Colaboradores',        i:'users', badge:() => colabs().filter(c => c.estado === 'atrasado').length, alert:true },
     { id:'roles',        t:'Managers y ascensos',  i:'award' },
     { id:'documentos',   t:'Documentos',           i:'file' },
     { id:'rutas',        t:'Rutas de aprendizaje', i:'route' },
@@ -637,6 +652,7 @@ const NAV = {
     { id:'validar',   t:'Nuevos por validar', i:'alert', badge:() => S.colaboradores.filter(c => c.estadoAlta === 'pendiente_validacion' && c.manager === S.user.nombre).length, alert:true },
     { id:'equipo',    t:'Colaboradores',    i:'users' },
     { id:'asignar',   t:'Asignar documentos', i:'file' },
+    { id:'docsmgr',   t:'Documentos',       i:'book' },
     { id:'evaluaciones', t:'Resultados',    i:'check' },
     { g: 'Seguimiento' },
     { id:'notificaciones', t:'Escalamientos', i:'bell' },
@@ -648,21 +664,17 @@ const NAV = {
     { id:'misdocs',   t:'Inducción',    i:'book', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.documentosRuta.filter(d => d.estado === 'pendiente').length; } },
     { id:'misevals',  t:'Mis evaluaciones',  i:'check', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : ca.evaluacionesRuta.filter(e => e.estado === 'pendiente').length; }, alert:true },
     { g: 'Continuo' },
-    { id:'mimicro',   t:'Micro aprendizaje', i:'zap', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : esCero() ? enviosPara(ca).filter(e => !e.respondido).length : S.pildoras.filter(p => p.estado === 'pendiente').length; } },
+    { id:'mimicro',   t:'Micro aprendizaje', i:'zap', badge:() => { const ca = colaboradorActivo(); return ca.estadoAlta === 'pendiente_validacion' ? 0 : esCero() ? enviosPara(ca).filter(e => e.abierto).length : S.pildoras.filter(p => p.estado === 'pendiente').length; } },
     { id:'asistente', t:'Asistente documental', i:'chat' },
     { id:'certificados', t:'Mis constancias', i:'award' }
   ]
 };
 
-/* Un Manager que llegó por ascenso conserva su propia ruta: sigue recibiendo
-   actualizaciones de documentos y debe confirmarlas como cualquier colaborador. */
-const NAV_MI_CUMPLIMIENTO = [
-  { g: 'Mi cumplimiento' },
-  NAV.colaborador.find(i => i.id === 'misdocs'),
-  NAV.colaborador.find(i => i.id === 'misevals'),
-  NAV.colaborador.find(i => i.id === 'certificados')
-];
-const navDe = (rol) => rol === 'manager' && S.user.colaboradorId && colaboradorActivo() ? NAV.manager.concat(NAV_MI_CUMPLIMIENTO) : NAV[rol];
+/* Un Manager que llegó por ascenso ve, en solo lectura, la inducción que completó
+   como colaborador. No tiene documentos pendientes ni evaluaciones nuevas. */
+const navDe = (rol) => rol === 'manager' && S.user.colaboradorId && colaboradorActivo()
+  ? NAV.manager.concat([{ g: 'Mi historial' }, { id: 'mihistorial', t: 'Historial de inducción', i: 'award' }])
+  : NAV[rol];
 
 const TITULOS = {
   dashboard:['Panel general','Estado consolidado de la inducción, la comprensión y el refuerzo continuo.'],
@@ -679,11 +691,13 @@ const TITULOS = {
   equipo:['Mi equipo','Avance de cada colaborador a su cargo y casos que requieren atención.'],
   validar:['Nuevos colaboradores por validar','Revise, ajuste y confirme la documentación antes de activar la ruta y avisar al colaborador.'],
   asignar:['Asignar documentos','Documentación específica adicional para los colaboradores de su equipo.'],
+  docsmgr:['Documentos','Consulte el contenido de cada documento del programa. Solo lectura: no se confirma lectura ni se rinden exámenes.'],
   misdocs:['Inducción','Lea cada documento, confirme la lectura y rinda su examen: el documento suma al aprobarlo.'],
   misevals:['Mis evaluaciones','Evaluaciones de comprensión pendientes y resultados obtenidos.'],
   mimicro:['Micro aprendizaje','Píldoras cortas para mantener vigente lo aprendido.'],
   asistente:['Asistente documental','Consulte las políticas y procedimientos en lenguaje natural.'],
-  certificados:['Mis constancias','Evidencia de las lecturas y evaluaciones completadas.']
+  certificados:['Mis constancias','Evidencia de las lecturas y evaluaciones completadas.'],
+  mihistorial:['Historial de inducción','Lo que completó como colaborador antes de su ascenso. Como Manager no tiene documentos ni evaluaciones pendientes.']
 };
 
 /* ------------------------------------------------------------
@@ -1001,7 +1015,7 @@ const head = (v, acciones = '') => {
 const tr = (dir, txt) => esCero() ? '' : trend(dir, txt);
 
 function vAdminDashboard() {
-  const cols = S.colaboradores;
+  const cols = colabs();
   const enCurso = cols.filter(c => c.estado === 'en_curso').length;
   const atrasados = cols.filter(c => c.estado === 'atrasado').length;
   const prom = promedioDe(cols);
@@ -1071,7 +1085,7 @@ function vAdminDashboard() {
     </div>
     <div class="card__body card__body--flush tablewrap">
       <table class="tbl"><thead><tr>
-        <th>Colaborador</th><th>Área</th><th>Motivo</th><th>Documentos</th><th>Pendientes</th><th>Última actividad</th><th>Estado</th><th></th>
+        <th>Colaborador</th><th>Área</th><th>Motivo</th><th>Documentos</th><th>Microevaluaciones</th><th>Última actividad</th><th>Estado</th><th></th>
       </tr></thead><tbody>
       ${atencion.slice(0, 8).map(c => `
         <tr class="clickrow" data-col="${c.id}">
@@ -1079,7 +1093,7 @@ function vAdminDashboard() {
           <td>${areaNom(c.area)}</td>
           <td class="small">${esc(motivosAtencion(c).join(' · '))}</td>
           <td class="num">${docTxt(c)}</td>
-          <td class="num">${c.pendientes}</td>
+          <td class="num">${microCelda(c)}</td>
           <td class="muted">${actividadTxt(c)}</td>
           <td>${badgeCol(c)}</td>
           <td class="r">${c.estadoAlta === 'activo' ? `<button class="btn btn--sm" data-recordar="${c.id}">Recordar</button>` : ''}</td>
@@ -1110,19 +1124,19 @@ function vAdminDashboard() {
 ------------------------------------------------------------ */
 function modalAreaEstado(areaId) {
   const a = DB.areas.find(x => x.id === areaId);
-  const de = S.colaboradores.filter(c => c.area === areaId);
+  const de = colabs().filter(c => c.area === areaId);
   modal(modalHead(`Estado de inducción · ${a.nombre}`, `${de.length} colaboradores del área · igual criterio que "Estado de las inducciones" pero filtrado a este grupo`) + `
     <div class="modal__body">
       <div class="card__body" style="padding:0 0 18px">${donut(distribucion(de))}</div>
       <div class="divider"></div>
       <div class="sec__t">Colaboradores de ${esc(a.nombre)}</div>
       <div class="tablewrap">
-        <table class="tbl"><thead><tr><th>Colaborador</th><th>Manager</th><th>Documentos</th><th>Pendientes</th><th>Promedio</th><th>Estado</th></tr></thead><tbody>
+        <table class="tbl"><thead><tr><th>Colaborador</th><th>Manager</th><th>Documentos</th><th>Microevaluaciones</th><th>Promedio</th><th>Estado</th></tr></thead><tbody>
         ${de.map(c => `<tr class="clickrow" data-col="${c.id}">
           <td>${persona(c.nombre, c.cargo)}</td>
           <td>${esc(c.manager)}</td>
           <td class="num">${docTxt(c)}</td>
-          <td class="num">${c.pendientes}</td>
+          <td class="num">${microCelda(c)}</td>
           <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
           <td>${badgeCol(c)}</td>
         </tr>`).join('') || `<tr><td colspan="6" class="tbl__empty">Sin colaboradores en esta área.</td></tr>`}
@@ -1135,22 +1149,22 @@ function modalAreaEstado(areaId) {
 }
 
 function tiempoMedioCierre() {
-  const cerrados = S.colaboradores.filter(c => c.estado === 'completado' && c.cerradoEl && c.ingreso);
+  const cerrados = colabs().filter(c => c.estado === 'completado' && c.cerradoEl && c.ingreso);
   if (!cerrados.length) return '—';
   return Math.round(cerrados.reduce((a, c) => a + Math.max(0, diasEntre(c.ingreso, c.cerradoEl)), 0) / cerrados.length) + ' d';
 }
 
 function vColaboradores() {
   const f = S.filtro;
-  const lista = S.colaboradores.filter(c =>
+  const lista = colabs().filter(c =>
     (!f.area || c.area === f.area) && (!f.estado || c.estado === f.estado));
   return head('colaboradores', `
     <button class="btn btn--primary" data-act="nuevo-col">${svg(ICO.plus)} Registrar colaborador</button>`) + `
 
   <div class="grid g-4">
-    ${kpi('Total registrados', S.colaboradores.length, `${activos().length} activos · ${S.colaboradores.filter(c => c.estadoAlta === 'pendiente_validacion').length} por validar`, '', '')}
-    ${kpi('Completados', S.colaboradores.filter(c => c.estado === 'completado').length, 'Ruta de inducción cerrada', tr('up', '+3'), '')}
-    ${kpi('Atrasados', S.colaboradores.filter(c => c.estado === 'atrasado').length, 'Con lecturas o evaluaciones vencidas', tr('down', '-1'), '')}
+    ${kpi('Total registrados', colabs().length, `${activos().length} activos · ${colabs().filter(c => c.estadoAlta === 'pendiente_validacion').length} por validar`, '', '')}
+    ${kpi('Completados', colabs().filter(c => c.estado === 'completado').length, 'Ruta de inducción cerrada', tr('up', '+3'), '')}
+    ${kpi('Atrasados', colabs().filter(c => c.estado === 'atrasado').length, 'Con lecturas o evaluaciones vencidas', tr('down', '-1'), '')}
     ${kpi('Tiempo medio de cierre', esCero() ? tiempoMedioCierre() : '11 d', 'Desde el ingreso hasta aprobar todo', tr('up', '-2 d'), '')}
   </div>
 
@@ -1165,7 +1179,7 @@ function vColaboradores() {
     </div>
     <div class="tablewrap">
       <table class="tbl" id="tblCols"><thead><tr>
-        <th>Colaborador</th><th>Área</th><th>Cargo</th><th>Manager</th><th>Ingreso</th><th>Documentos</th><th>Promedio</th><th>Pendientes</th><th>Estado</th><th></th>
+        <th>Colaborador</th><th>Área</th><th>Cargo</th><th>Manager</th><th>Ingreso</th><th>Documentos</th><th>Promedio</th><th>Microevaluaciones</th><th>Estado</th><th></th>
       </tr></thead><tbody>
       ${lista.map(c => `
         <tr class="clickrow" data-col="${c.id}">
@@ -1176,10 +1190,10 @@ function vColaboradores() {
           <td class="num">${fechaLarga(c.ingreso)}</td>
           <td class="num">${docTxt(c)}</td>
           <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
-          <td class="num">${c.pendientes}</td>
+          <td class="num">${microCelda(c)}</td>
           <td>${badgeCol(c)}</td>
           <td class="r"><button class="btn btn--sm" data-col-open="${c.id}">Ver ficha</button></td>
-        </tr>`).join('') || `<tr><td colspan="10" class="tbl__empty">${S.colaboradores.length ? 'Ningún colaborador coincide con los filtros aplicados.' : 'Todavía no hay colaboradores. Use «Registrar colaborador» para dar de alta al primero.'}</td></tr>`}
+        </tr>`).join('') || `<tr><td colspan="10" class="tbl__empty">${colabs().length ? 'Ningún colaborador coincide con los filtros aplicados.' : 'Todavía no hay colaboradores. Use «Registrar colaborador» para dar de alta al primero.'}</td></tr>`}
       </tbody></table>
     </div>
   </section>`;
@@ -1192,7 +1206,7 @@ function vColaboradores() {
      selectores de "Manager responsable");
    - opcionalmente recibe un equipo inicial (transferido de otro Manager,
      incluidas las validaciones pendientes);
-   - conserva su propia ruta y evidencias ("Mi cumplimiento").
+   - su inducción como colaborador pasa a un historial de solo lectura.
 ------------------------------------------------------------ */
 function elegibilidadAscenso(c) {
   if (c.rolActual === 'manager') return 'Ya es Manager';
@@ -1200,7 +1214,7 @@ function elegibilidadAscenso(c) {
   if (S.config.exigirInduccionParaAscenso && c.estado !== 'completado') return `Debe completar su inducción (${docTxt(c)} documentos)`;
   return null;
 }
-const equipoDeManager = (nombre) => S.colaboradores.filter(c => c.manager === nombre);
+const equipoDeManager = (nombre) => colabs().filter(c => c.manager === nombre);
 
 function vRoles() {
   const mgrs = managers();
@@ -1225,7 +1239,7 @@ function vRoles() {
           ['Requisito', S.config.exigirInduccionParaAscenso ? 'El colaborador debe tener su inducción completada (configurable en Configuración).' : 'Cualquier colaborador activo puede ascender (requisito desactivado en Configuración).'],
           ['Cuenta de Manager', 'Se crea su acceso como Manager y aparece en «Manager responsable» al registrar colaboradores.'],
           ['Equipo', 'Puede recibir un equipo inicial: los colaboradores elegidos (y sus validaciones pendientes) pasan a reportarle.'],
-          ['Historial', 'Conserva su ruta, evaluaciones y evidencias. Las actualizaciones de documentos le siguen llegando en «Mi cumplimiento».']
+          ['Historial', 'Su inducción pasa a «Historial de inducción»: documentos aprobados, evaluaciones, micro aprendizaje y constancias, en solo lectura. Deja de contar en los indicadores.']
         ].map(([t, d], i) => `<div><span class="tag tag--brand">${i + 1}</span><b>${t}</b><p class="small muted">${d}</p></div>`).join('')}
       </div>
     </div>
@@ -1247,6 +1261,7 @@ function vRoles() {
           <td class="num">${eq.filter(c => c.estadoAlta === 'pendiente_validacion').length}</td>
           <td class="r" style="white-space:nowrap">
             <button class="btn btn--sm" data-transferir="${m.id}" ${eq.length ? '' : 'disabled'}>Transferir equipo</button>
+            ${m.origen === 'ascenso' ? `<button class="btn btn--sm" data-historial="${m.colaboradorId}">Ver historial</button>` : ''}
             ${m.origen === 'ascenso' ? `<button class="btn btn--sm btn--danger" data-revertir="${m.id}" ${eq.length ? 'disabled title="Primero transfiera su equipo"' : ''}>Revertir ascenso</button>` : ''}
           </td>
         </tr>`;
@@ -1303,7 +1318,7 @@ function modalAscender(colId) {
       <ul class="bullets">
         <li>Se crea su cuenta de Manager y podrá ingresar con ese perfil (deja de aparecer como cuenta de colaborador).</li>
         <li>Verá «Nuevos por validar», «Colaboradores», «Asignar documentos» y «Resultados» de su equipo.</li>
-        <li>Su ruta (${docTxt(c)} documentos), evaluaciones y evidencias se conservan y siguen en «Mi cumplimiento».</li>
+        <li>Su inducción (${docTxt(c)} documentos aprobados), evaluaciones y constancias pasan a su «Historial de inducción», en solo lectura. Deja de contar en los indicadores y no recibe nuevas evaluaciones.</li>
         <li>Se registra el cambio de rol como evidencia y se notifica a ${esc(c.nombre)} y a ${esc(c.manager)}.</li>
       </ul>
     </div>
@@ -1598,7 +1613,7 @@ function ingresosPorMes() {
   const meses = Array.from({ length: 6 }, (_, i) => { const d = new Date(y, mo - 6 + i, 1); return [d.getFullYear(), d.getMonth()]; });
   return {
     labels: meses.map(([, mm]) => m[mm]),
-    valores: meses.map(([yy, mm]) => S.colaboradores.filter(c => c.ingreso && c.ingreso.startsWith(`${yy}-${pad2(mm + 1)}`)).length)
+    valores: meses.map(([yy, mm]) => colabs().filter(c => c.ingreso && c.ingreso.startsWith(`${yy}-${pad2(mm + 1)}`)).length)
   };
 }
 
@@ -1722,7 +1737,7 @@ function vEvidencias() {
 
   <div class="grid g-4">
     ${kpi('Evidencias registradas', esCero() ? S.evidencias.length : '2 431', 'Lecturas, evaluaciones y cambios de rol con sello de tiempo', '', '')}
-    ${kpi('Personas con evidencia', esCero() ? conEv : '100%', esCero() ? `De ${S.colaboradores.length} colaborador(es) registrados` : 'Documentos obligatorios trazados', '', '')}
+    ${kpi('Personas con evidencia', esCero() ? conEv : '100%', esCero() ? `De ${colabs().length} colaborador(es) registrados` : 'Documentos obligatorios trazados', '', '')}
     ${kpi('Retención', '36 meses', 'Conforme al procedimiento de calidad', '', '')}
     ${kpi('Última exportación', S.ultimaExport ? fechaLarga(S.ultimaExport) : '—', 'Auditoría interna ISO 9001', '', '')}
   </div>
@@ -1819,7 +1834,7 @@ function guardarConfig() {
 /* ------------------------------------------------------------
    8. Vistas · MANAGER
 ------------------------------------------------------------ */
-const equipoDe = () => S.colaboradores.filter(c => c.manager === S.user.nombre && c.id !== S.user.colaboradorId);
+const equipoDe = () => colabs().filter(c => c.manager === S.user.nombre);
 
 function vManagerDashboard() {
   const eq = equipoDe();
@@ -1982,14 +1997,14 @@ function vEquipo() {
       <button class="btn btn--sm" data-act="export">${svg(ICO.down)} CSV</button>
     </div>
     <div class="tablewrap">
-      <table class="tbl" id="tblEq"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Cargo</th><th>Documentos</th><th>Pendientes</th><th>Promedio</th><th>Última actividad</th><th>Estado</th><th></th></tr></thead><tbody>
+      <table class="tbl" id="tblEq"><thead><tr><th>Colaborador</th><th>Ingreso</th><th>Cargo</th><th>Documentos</th><th>Microevaluaciones</th><th>Promedio</th><th>Última actividad</th><th>Estado</th><th></th></tr></thead><tbody>
       ${eq.map(c => `
         <tr class="clickrow" data-col="${c.id}">
           <td>${persona(c.nombre, c.cargo)}</td>
           <td class="num">${fechaLarga(c.ingreso)}</td>
           <td>${esc(c.cargo)}</td>
           <td class="num">${docTxt(c)}</td>
-          <td class="num">${c.pendientes}</td>
+          <td class="num">${microCelda(c)}</td>
           <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
           <td class="muted">${actividadTxt(c)}</td>
           <td>${badgeCol(c)}</td>
@@ -2042,6 +2057,28 @@ function vAsignar() {
       </div>
     </section>
   </div>`;
+}
+
+/* Documentos del programa para el Manager: solo ver su contenido */
+function vDocsManager() {
+  const grupos = [...DB.etapas].sort((a, b) => a.orden - b.orden).map(e => ({ t: e.nombre, docs: S.documentos.filter(d => d.etapaId === e.id) }))
+    .concat([{ t: 'Documentación adicional', docs: S.documentos.filter(d => !d.etapaId) }]).filter(g => g.docs.length);
+  return head('docsmgr') + `
+  <section class="card">
+    <div class="filters"><input type="search" id="fqDocs" placeholder="Buscar por título o código"><span class="spacer"></span>
+      <span class="small muted">${S.documentos.length} documentos · solo lectura</span></div>
+    <div class="card__body">
+      ${grupos.map(g => `<div class="etapa-card" data-grupo>
+        <div class="etapa-card__h"><b>${esc(g.t)}</b><span class="small muted">${g.docs.length} documentos</span></div>
+        <div class="doclist">${g.docs.map(d => `<div class="docitem" data-buscar="${esc((d.titulo + ' ' + d.codigo).toLowerCase())}" style="padding:10px 12px">
+          <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}" style="width:30px;height:34px">${svg(ICO.file)}</span>
+          <span class="docitem__b"><b style="font-size:13.3px">${esc(d.titulo)}</b>
+            <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span><span>${esc(d.propietario)}</span></span></span>
+          <span class="docitem__a"><button class="btn btn--sm" data-leer="${d.id}">${svg(ICO.eye)} Ver contenido</button></span>
+        </div>`).join('')}</div>
+      </div>`).join('')}
+    </div>
+  </section>`;
 }
 
 function vResultadosEquipo() {
@@ -2144,6 +2181,47 @@ function fasesHTML(actual = 0, notas = {}) {
       ${notas[f.n] ? `<div class="phase__s">${notas[f.n]}</div>` : ''}
     </li>`).join('')}
   </ol>`;
+}
+
+/* Historial de inducción de un Manager ascendido: lo que hizo como colaborador */
+function historialHTML(c) {
+  if (!c) return vacio('Sin historial', 'Este Manager no tiene registro de inducción en la plataforma.');
+  const { aprobados, total } = docResumen(c);
+  const resp = c.microRespuestas || [];
+  const filas = c.documentosRuta.map(md => {
+    const d = doc(md.docId);
+    const exs = c.evaluacionesRuta.filter(e => { const ev = evalu(e.evId); return ev && ev.docId === md.docId; });
+    return { d, md, exs };
+  });
+  return `
+  <div class="grid g-4">
+    ${kpi('Documentos aprobados', `${aprobados}/${total}`, 'Al momento de su ascenso', '', '')}
+    ${kpi('Promedio de exámenes', fmtPct(c.promedio || null), `${c.evaluacionesRuta.filter(e => e.puntaje != null).length} evaluación(es) rendidas`, '', '')}
+    ${kpi('Inducción cerrada', c.cerradoEl ? fechaLarga(c.cerradoEl) : '—', `Ingreso el ${fechaLarga(c.ingreso)}`, '', '')}
+    ${kpi('Ascendido a Manager', c.ascendidoEl ? fechaLarga(c.ascendidoEl) : '—', esc(c.cargoAnterior ? 'Antes: ' + c.cargoAnterior : ''), '', '')}
+  </div>
+  <section class="card mt-16">
+    <div class="card__head"><div><h3>Documentos y exámenes</h3><p>Registro de solo lectura · ya no cuenta en los indicadores ni recibe evaluaciones</p></div></div>
+    <div class="card__body card__body--flush tablewrap">
+      <table class="tbl"><thead><tr><th>Documento</th><th>Etapa</th><th>Lectura confirmada</th><th>Exámenes</th></tr></thead><tbody>
+      ${filas.map(({ d, md, exs }) => `<tr>
+        <td><b style="font-weight:560">${d ? esc(d.titulo) : 'Documento retirado'}</b>${(md.historial || []).length ? `<br><small class="muted">Versiones anteriores: ${md.historial.map(h => 'v' + h.v).join(', ')}</small>` : ''}</td>
+        <td class="small">${d && etapaDe(d) ? esc(etapaDe(d).nombre.split(' · ')[0]) : 'Adicional'}</td>
+        <td class="num muted">${md.estado === 'leido' ? esc(md.confirmado) : 'No confirmada'}</td>
+        <td>${exs.map(e => { const ev = evalu(e.evId); return `<span class="badge badge--${e.estado === 'aprobada' ? 'ok' : e.estado === 'reprobada' ? 'danger' : 'muted'}">${ev.id.startsWith('EV-UPD') ? 'Actualización' : 'Examen'} · ${e.estado}${e.puntaje != null ? ' ' + e.puntaje + '%' : ''}</span>`; }).join(' ') || '<span class="muted">—</span>'}</td>
+      </tr>`).join('')}
+      </tbody></table>
+    </div>
+  </section>
+  <section class="card mt-16">
+    <div class="card__head"><div><h3>Micro aprendizaje respondido</h3><p>Campañas en las que participó como colaborador</p></div></div>
+    <div class="card__body card__body--flush tablewrap">
+      <table class="tbl"><thead><tr><th>Campaña</th><th>Envío</th><th>Respondido</th><th>Resultado</th></tr></thead><tbody>
+      ${resp.map(r => { const cm = S.campanas.find(x => x.id === r.campId); return `<tr><td>${cm ? esc(cm.nombre) : 'Campaña eliminada'}</td><td class="num">${r.n}</td><td class="num muted">${esc(r.fecha)}</td>
+        <td><span class="badge badge--${pct(r.correctas, r.total) >= 70 ? 'ok' : 'warn'}">${r.correctas}/${r.total} correctas</span></td></tr>`; }).join('') || '<tr><td colspan="4" class="tbl__empty">No respondió envíos de micro aprendizaje.</td></tr>'}
+      </tbody></table>
+    </div>
+  </section>`;
 }
 
 function vColabDashboard() {
@@ -2270,7 +2348,8 @@ function vMisEvals() {
   </section>
   ${(() => {
     // Micro aprendizaje: llega después, como refuerzo, también cuando ya terminó su inducción
-    const pend = esCero() ? enviosPara(ca).filter(e => !e.respondido) : [];
+    const pend = esCero() ? enviosPara(ca).filter(e => e.abierto) : [];
+    const vencidas = esCero() ? enviosPara(ca).filter(e => e.vencido) : [];
     if (!esCero()) return '';
     return `<section class="card mt-16">
       <div class="card__head"><div><h3>Micro aprendizaje por responder</h3><p>Evaluaciones cortas de refuerzo que llegan según la periodicidad de cada campaña</p></div></div>
@@ -2279,7 +2358,14 @@ function vMisEvals() {
           <span class="docitem__ic" style="background:var(--accent-050);border-color:#F3DFCE;color:var(--accent)">${svg(ICO.zap)}</span>
           <span class="docitem__b"><b>${esc(e.cm.nombre)} · envío ${e.n}</b><span class="docitem__m"><span>${e.preguntas.length} pregunta(s)</span><span>Enviada el ${fechaLarga(e.fecha)}</span></span></span>
           <span class="docitem__a"><button class="btn btn--sm btn--primary" data-envio="${e.campId}|${e.n}">Responder</button></span>
-        </div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No tiene envíos pendientes.</p>'}</div>
+        </div>`).join('')}</div>` : '<p class="small muted" style="margin:0">No tiene envíos por responder.</p>'}
+      ${vencidas.length ? `<div class="sec__t mt-16">Vencidas sin responder</div><div class="doclist">${vencidas.map(e => `
+        <div class="docitem">
+          <span class="docitem__ic" style="background:var(--danger-050);border-color:#EED6D4;color:var(--danger)">${svg(ICO.clock)}</span>
+          <span class="docitem__b"><b>${esc(e.cm.nombre)} · envío ${e.n}</b>
+            <span class="docitem__m"><span>Enviada el ${fechaLarga(e.fecha)}</span><span>Venció el ${fechaLarga(e.vence)}</span></span></span>
+          <span class="docitem__a">${e.solicitud ? '<span class="badge badge--info">Reenvío solicitado</span>' : `<button class="btn btn--sm" data-solicitar="${e.campId}|${e.n}">Solicitar reenvío</button>`}</span>
+        </div>`).join('')}</div>` : ''}</div>
     </section>`;
   })()}`;
 }
@@ -2330,15 +2416,16 @@ function vMiMicro() {
    evaluación corta según la periodicidad; queda pendiente hasta responderla. */
 function vMiMicroEnvios(ca) {
   const envios = enviosPara(ca);
-  const pend = envios.filter(e => !e.respondido);
+  const pend = envios.filter(e => e.abierto);
+  const vencidas = envios.filter(e => e.vencido);
   const hechas = envios.filter(e => e.respondido);
   const preg = hechas.reduce((a, e) => a + e.respondido.total, 0), ok = hechas.reduce((a, e) => a + e.respondido.correctas, 0);
   const proximo = campaniasPara(ca.area).flatMap(cm => (cm.evaluaciones || []).filter(e => e.fecha > HOY)).map(e => e.fecha).sort()[0];
   return head('mimicro') + `
   <div class="grid g-3">
-    ${kpi('Envíos recibidos', envios.length, `${campaniasPara(ca.area).length} campaña(s) activas para ${areaNom(ca.area)}`, '', '')}
+    ${kpi('Respondidas', `${hechas.length} de ${envios.length}`, `${campaniasPara(ca.area).length} campaña(s) activas para ${areaNom(ca.area)}`, '', '')}
     ${kpi('Aciertos', preg ? pct(ok, preg) + '%' : '—', `${hechas.length} envío(s) respondidos`, '', '')}
-    ${kpi('Pendientes', pend.length, proximo ? `Próximo envío: ${fechaLarga(proximo)}` : 'Sin envíos programados', '', '')}
+    ${kpi('Por responder', pend.length, vencidas.length ? `${vencidas.length} vencida(s): solicite el reenvío` : proximo ? `Próximo envío: ${fechaLarga(proximo)}` : 'Sin envíos programados', '', '')}
   </div>
 
   <section class="card mt-16">
@@ -2348,13 +2435,24 @@ function vMiMicroEnvios(ca) {
       ${pend.length ? `<div class="doclist">${pend.map(e => { const d = doc(e.cm.docId); return `
         <div class="docitem">
           <span class="docitem__ic" style="background:var(--accent-050);border-color:#F3DFCE;color:var(--accent)">${svg(ICO.zap)}</span>
-          <span class="docitem__b"><b>${esc(e.cm.nombre)} · evaluación ${e.n}</b>
+          <span class="docitem__b"><b>${esc(e.cm.nombre)} · envío ${e.n}</b>
             <span class="docitem__m"><span>${e.preguntas.length} pregunta(s)</span>${d ? `<span>${d.codigo} v${d.version}</span>` : ''}<span>Enviada el ${fechaLarga(e.fecha)}</span></span></span>
-          <span class="docitem__a"><button class="btn btn--sm btn--primary" data-envio="${e.campId}|${e.n}">Responder</button></span>
+          <span class="docitem__a"><span class="small muted">Vence ${fechaLarga(e.vence)}</span><button class="btn btn--sm btn--primary" data-envio="${e.campId}|${e.n}">Responder</button></span>
         </div>`; }).join('')}</div>`
         : vacio('Está al día', proximo ? `El próximo envío llega el ${fechaLarga(proximo)}.` : 'Cuando haya una campaña activa para su área, los envíos aparecerán aquí.')}
     </div>
   </section>
+
+  ${vencidas.length ? `<section class="card mt-16">
+    <div class="card__head"><div><h3>Vencidas sin responder</h3><p>No se respondieron a tiempo · solicite el reenvío a su Manager para poder responderlas</p></div></div>
+    <div class="card__body"><div class="doclist">${vencidas.map(e => `
+        <div class="docitem">
+          <span class="docitem__ic" style="background:var(--danger-050);border-color:#EED6D4;color:var(--danger)">${svg(ICO.clock)}</span>
+          <span class="docitem__b"><b>${esc(e.cm.nombre)} · envío ${e.n}</b>
+            <span class="docitem__m"><span>Enviada el ${fechaLarga(e.fecha)}</span><span>Venció el ${fechaLarga(e.vence)}</span></span></span>
+          <span class="docitem__a">${e.solicitud ? '<span class="badge badge--info">Reenvío solicitado</span>' : `<button class="btn btn--sm" data-solicitar="${e.campId}|${e.n}">Solicitar reenvío</button>`}</span>
+        </div>`).join('')}</div></div>
+  </section>` : ''}
 
   <section class="card mt-16">
     <div class="card__head"><div><h3>Historial</h3><p>Sus respuestas quedan registradas para medir la retención en el tiempo</p></div></div>
@@ -2368,11 +2466,40 @@ function vMiMicroEnvios(ca) {
   </section>`;
 }
 
+/* El colaborador pide que le reenvíen una microevaluación vencida */
+function solicitarReenvio(clave) {
+  const [campId, nTxt] = clave.split('|');
+  const ca = colaboradorActivo();
+  const e = enviosPara(ca).find(x => x.campId === campId && x.n === +nTxt);
+  if (!e || !e.vencido || e.solicitud) return;
+  (ca.microSolicitudes = ca.microSolicitudes || []).push({ campId, n: e.n, fecha: ahora(), estado: 'pendiente' });
+  notificar({ tipo: 'recordatorio', titulo: 'Solicitud de reenvío de microevaluación',
+    detalle: `${ca.nombre} solicita el reenvío de «${e.cm.nombre}» (envío ${e.n}), vencida el ${fechaLarga(e.vence)}. Puede reenviarla desde su ficha.`,
+    destino: ca.manager, para: [ca.manager] });
+  toast('Solicitud enviada', `${ca.manager} recibió su pedido de reenvío.`, 'info');
+  render();
+}
+
+/* El Manager (o el Admin) reenvía una microevaluación vencida: queda abierta 2 días */
+function reenviarMicro(c, clave) {
+  const [campId, nTxt] = clave.split('|');
+  const e = enviosPara(c).find(x => x.campId === campId && x.n === +nTxt);
+  if (!e || !e.vencido) return;
+  (c.microReenvios = c.microReenvios || []).push({ campId, n: e.n, hasta: sumarDias(HOY, 2), por: S.user.nombre, fecha: ahora() });
+  (c.microSolicitudes || []).forEach(r => { if (r.campId === campId && r.n === e.n && r.estado === 'pendiente') r.estado = 'reenviado'; });
+  notificar({ tipo: 'campana', titulo: 'Microevaluación reenviada',
+    detalle: `${S.user.nombre} le reenvió «${e.cm.nombre}» (envío ${e.n}). Puede responderla hasta el ${fechaLarga(sumarDias(HOY, 2))}.`,
+    destino: c.nombre, para: [c.nombre] });
+  recalcularColaborador(c);
+  toast('Microevaluación reenviada', `${c.nombre} puede responderla hasta el ${fechaLarga(sumarDias(HOY, 2))}.`, 'info');
+  render(); fichaColaborador(c.id);
+}
+
 function abrirEnvio(clave) {
   const [campId, nTxt] = clave.split('|');
   const ca = colaboradorActivo();
   const e = enviosPara(ca).find(x => x.campId === campId && x.n === +nTxt);
-  if (!e || e.respondido) return;
+  if (!e || !e.abierto) { if (e && e.vencido) toast('Microevaluación vencida', 'Solicite el reenvío a su Manager para poder responderla.', 'warn'); return; }
   let i = 0, ok = 0;
   const pintar = () => {
     const p = e.preguntas[i];
@@ -2467,10 +2594,10 @@ const VISTAS = {
   admin: { dashboard:vAdminDashboard, colaboradores:vColaboradores, roles:vRoles, documentos:vDocumentos, rutas:vRutas,
            evaluaciones:vEvaluaciones, micro:vMicro, analitica:vAnalitica, notificaciones:vNotificaciones,
            evidencias:vEvidencias, config:vConfig },
-  manager: { dashboard:vManagerDashboard, validar:vValidarLista, equipo:vEquipo, asignar:vAsignar, evaluaciones:vResultadosEquipo,
+  manager: { dashboard:vManagerDashboard, validar:vValidarLista, equipo:vEquipo, asignar:vAsignar, docsmgr:vDocsManager, evaluaciones:vResultadosEquipo,
              notificaciones:vNotificaciones, analitica:vAnalitica,
-             // "Mi cumplimiento" de un Manager ascendido (reutiliza las vistas del colaborador)
-             misdocs:vMisDocs, misevals:vMisEvals, certificados:vCertificados },
+             // Historial de inducción de un Manager ascendido (solo lectura)
+             mihistorial:() => head('mihistorial') + historialHTML(colaboradorActivo()) },
   colaborador: { dashboard:vColabDashboard, misdocs:vMisDocs, misevals:vMisEvals, mimicro:vMiMicro,
                  asistente:vAsistente, certificados:vCertificados }
 };
@@ -2490,6 +2617,11 @@ function bindVista() {
   // Búsqueda dentro de la tabla visible
   const fq = $('#fq');
   if (fq) fq.oninput = () => filtrarTabla(fq.value);
+  // Búsqueda en la lista de documentos del Manager
+  const fqDocs = $('#fqDocs');
+  if (fqDocs) fqDocs.oninput = () => { const t = fqDocs.value.trim().toLowerCase();
+    $$('[data-buscar]').forEach(x => { x.style.display = !t || x.dataset.buscar.includes(t) ? '' : 'none'; });
+    $$('[data-grupo]').forEach(g => { g.style.display = $$('[data-buscar]', g).some(x => x.style.display !== 'none') ? '' : 'none'; }); };
 
   // Detalle de inducción por área (panel general)
   $$('[data-area-open]').forEach(b => b.onclick = () => modalAreaEstado(b.dataset.areaOpen));
@@ -2512,9 +2644,16 @@ function bindVista() {
   $$('[data-ascender]').forEach(b => b.onclick = () => modalAscender(b.dataset.ascender));
   $$('[data-transferir]').forEach(b => b.onclick = () => modalTransferir(b.dataset.transferir));
   $$('[data-revertir]').forEach(b => b.onclick = () => revertirAscenso(b.dataset.revertir));
+  $$('[data-historial]').forEach(b => b.onclick = () => {
+    const c = S.colaboradores.find(x => x.id === b.dataset.historial);
+    modal(modalHead(`Historial de inducción · ${c ? c.nombre : ''}`, 'Lo que completó como colaborador antes de ascender a Manager') + `<div class="modal__body">${historialHTML(c)}</div>
+      <div class="modal__foot"><span class="spacer"></span><button class="btn btn--ghost" data-close>Cerrar</button></div>`, 'modal--xl');
+    bindModal();
+  });
 
   // Micro aprendizaje desde cero
   $$('[data-envio]').forEach(b => b.onclick = () => abrirEnvio(b.dataset.envio));
+  $$('[data-solicitar]').forEach(b => b.onclick = () => solicitarReenvio(b.dataset.solicitar));
 
   // Eliminar campaña
   $$('[data-camp-del]').forEach(b => b.onclick = () => {
@@ -2674,7 +2813,7 @@ function fichaColaborador(id) {
           ${c.rolActual === 'manager' ? `<dt>Rol</dt><dd>Manager desde ${fechaLarga(c.ascendidoEl)} (antes ${esc(c.cargoAnterior || '—')})</dd>` : ''}
           <dt>Documentos aprobados</dt><dd class="num">${aprobados}/${total}</dd>
           <dt>Promedio de exámenes</dt><dd class="num">${c.promedio ? c.promedio + '%' : 'Sin evaluaciones'}</dd>
-          <dt>Pendientes</dt><dd class="num">${c.pendientes} evaluación(es)</dd>
+          <dt>Microevaluaciones</dt><dd class="num">${microCelda(c)} respondidas</dd>
           <dt>Última actividad</dt><dd>${actividadTxt(c)}</dd>
         </dl>
       </div>
@@ -2725,6 +2864,21 @@ function fichaColaborador(id) {
         </div>
       </div>` : ''}
 
+      ${(() => {
+        if (!esCero() || c.estadoAlta !== 'activo') return '';
+        const env = enviosPara(c), venc = env.filter(e => e.vencido), mr = microResumen(c);
+        if (!env.length) return '';
+        return `<div class="sec">
+          <div class="sec__t">Microevaluaciones · ${mr.respondidas} de ${mr.recibidas} respondidas</div>
+          ${venc.length ? `<div class="doclist">${venc.map(e => `<div class="docitem" style="padding:10px 12px">
+              <span class="docitem__ic" style="width:30px;height:34px;background:var(--danger-050);border-color:#EED6D4;color:var(--danger)">${svg(ICO.clock)}</span>
+              <span class="docitem__b"><b style="font-size:13px">${esc(e.cm.nombre)} · envío ${e.n}</b>
+                <span class="docitem__m"><span>Venció el ${fechaLarga(e.vence)}</span>${e.solicitud ? '<span class="badge badge--info">Solicitó reenvío</span>' : ''}</span></span>
+              <span class="docitem__a">${rol !== 'colaborador' ? `<button class="btn btn--sm btn--primary" data-reenviar="${e.campId}|${e.n}">Reenviar</button>` : ''}</span>
+            </div>`).join('')}</div>` : '<p class="small muted" style="margin:0">Sin microevaluaciones vencidas.</p>'}
+        </div>`;
+      })()}
+
       <div class="sec">
         <div class="sec__t">Historial reciente</div>
         <ul class="feed">
@@ -2744,6 +2898,7 @@ function fichaColaborador(id) {
     </div>`);
 
   $$('[data-close-drawer]').forEach(b => b.onclick = closeDrawer);
+  $$('[data-reenviar]').forEach(b => b.onclick = () => reenviarMicro(c, b.dataset.reenviar));
   $$('[data-drawer-act]').forEach(b => b.onclick = () => {
     const a = b.dataset.drawerAct;
     if (a === 'recordar') { enviarRecordatorio(c); b.disabled = true; b.textContent = 'Enviado'; }
@@ -2874,14 +3029,14 @@ function bindModal() {
    queda sin documentos de una etapa, se le quita también la evaluación de esa etapa. */
 function retirarDocumento(docId) {
   const d = doc(docId); if (!d) return;
-  const afectados = S.colaboradores.filter(c => c.documentosRuta.some(x => x.docId === docId));
+  const afectados = colabs().filter(c => c.documentosRuta.some(x => x.docId === docId));
   if (!confirm(`¿Retirar «${d.titulo}»? Sale de la ruta de ${afectados.length} colaborador(es). Las evidencias ya registradas se conservan.`)) return;
   const evIds = S.evaluaciones.filter(e => e.docId === docId).map(e => e.id);
   S.documentos = S.documentos.filter(x => x.id !== docId);
   S.evaluaciones = S.evaluaciones.filter(e => !evIds.includes(e.id));
   S.campanas = S.campanas.filter(cm => cm.docId !== docId);
   S.pildoras = S.pildoras.filter(p => p.doc !== docId && S.campanas.some(cm => cm.id === p.campana));
-  S.colaboradores.forEach(c => {
+  colabs().forEach(c => {
     c.documentosRuta = c.documentosRuta.filter(x => x.docId !== docId);
     c.evaluacionesRuta = c.evaluacionesRuta.filter(e => !evIds.includes(e.evId) && (!e.etapaId || c.documentosRuta.some(x => x.etapaId === e.etapaId)));
     sincronizarEvaluaciones(c);
@@ -3057,10 +3212,11 @@ function modalActualizarDocumento(docId) {
   const nueva = sugerirVersion(d.version);
   const personas = activos().sort((a, b) => a.area.localeCompare(b.area) || a.nombre.localeCompare(b.nombre));
   const tiene = (c) => c.documentosRuta.find(x => x.docId === docId);
+  const mgrs = managers().sort((a, b) => a.area.localeCompare(b.area));
   _actState = { docId, version: nueva, nivel: 'mayor', accion: 'examen', resumen: '', preguntas: null,
-    destinatarios: personas.filter(tiene).map(c => c.id) };
+    destinatarios: personas.filter(tiene).map(c => c.id), managersAviso: [] };
 
-  const areasConGente = DB.areas.filter(a => personas.some(c => c.area === a.id));
+  const areasConGente = DB.areas.filter(a => personas.some(c => c.area === a.id) || mgrs.some(m => m.area === a.id));
   modal(modalHead('Actualizar documento', `${d.titulo} · versión actual v${d.version}`) + `
     <div class="modal__body">
       <div class="grid g-2" style="gap:0 16px">
@@ -3092,7 +3248,12 @@ function modalActualizarDocumento(docId) {
         ${personas.map(c => { const md = tiene(c); return `<label>
           <input type="checkbox" data-up-p="${c.id}" data-area="${c.area}" ${md ? 'checked' : ''}>
           ${persona(c.nombre, `${areaNom(c.area)} · ${c.rolActual === 'manager' ? 'Manager' : 'Colaborador'} · ${!md ? 'no tiene el documento: se le asignará' : md.estado === 'leido' ? 'ya lo leyó' : 'aún no lo lee'}`)}
-        </label>`; }).join('') || '<p class="small muted">No hay personas activas.</p>'}
+        </label>`; }).join('')}
+        ${mgrs.map(m => `<label>
+          <input type="checkbox" data-up-m="${esc(m.nombre)}" data-area="${m.area}">
+          ${persona(m.nombre, `${areaNom(m.area)} · Manager · solo recibe el aviso (no relee ni rinde examen)`)}
+        </label>`).join('')}
+        ${!personas.length && !mgrs.length ? '<p class="small muted">No hay personas activas.</p>' : ''}
       </div>
       <div class="explain mt-16" id="up-impacto"></div>
     </div>
@@ -3104,6 +3265,7 @@ function modalActualizarDocumento(docId) {
   bindModal();
 
   const sel = () => $$('[data-up-p]:checked').map(x => x.dataset.upP);
+  const selM = () => $$('[data-up-m]:checked').map(x => x.dataset.upM);
   const accion = () => $('#up-nivel').value === 'mayor' ? 'examen' : ($$('[name="up-accion"]').find(r => r.checked) || {}).value;
   const pintar = () => {
     const mayor = $('#up-nivel').value === 'mayor';
@@ -3112,19 +3274,20 @@ function modalActualizarDocumento(docId) {
     const leyeron = elegidos.filter(c => (tiene(c) || {}).estado === 'leido').length;
     const nuevos = elegidos.filter(c => !tiene(c)).length;
     // Estado de las casillas de área según las personas marcadas
-    $$('[data-up-area]').forEach(ch => { const deArea = personas.filter(c => c.area === ch.dataset.upArea);
-      ch.checked = deArea.every(c => ids.includes(c.id)); ch.indeterminate = !ch.checked && deArea.some(c => ids.includes(c.id)); });
-    $('#up-impacto').innerHTML = `${svg(ICO.alert)} ${elegidos.length} destinatario(s) recibirán el aviso${nuevos ? ` (a ${nuevos} se les asignará el documento)` : ''}. ${accion() === 'examen'
+    $$('[data-up-area]').forEach(ch => { const cajas = $$(`[data-area="${ch.dataset.upArea}"]`, $('#up-personas'));
+      ch.checked = cajas.length > 0 && cajas.every(x => x.checked); ch.indeterminate = !ch.checked && cajas.some(x => x.checked); });
+    const nm = selM().length;
+    $('#up-impacto').innerHTML = `${svg(ICO.alert)} ${elegidos.length} colaborador(es)${nm ? ` y ${nm} manager(s)` : ''} recibirán el aviso${nuevos ? ` (a ${nuevos} se les asignará el documento)` : ''}. ${accion() === 'examen'
       ? `${leyeron} que ya lo leyeron deberán releerlo y rendir la micro evaluación; lo que hicieron en v${d.version} queda guardado en su registro y en el historial de versiones.`
       : 'Solo se les notifica: su lectura y su examen siguen vigentes.'} Quienes no estén marcados conservan todo y no reciben aviso.`;
     $('#up-analizar').innerHTML = accion() === 'examen' ? `${svg(ICO.spark)} Analizar con IA y generar preguntas` : `${svg(ICO.check)} Publicar y notificar`;
   };
   $('#up-nivel').onchange = pintar;
   $$('[name="up-accion"]').forEach(r => r.onchange = pintar);
-  $$('[data-up-p]').forEach(ch => ch.onchange = pintar);
-  $$('[data-up-area]').forEach(ch => ch.onchange = () => { $$(`[data-up-p][data-area="${ch.dataset.upArea}"]`).forEach(p => { p.checked = ch.checked; }); pintar(); });
-  $('#up-todos').onclick = () => { $$('[data-up-p]').forEach(p => { p.checked = true; }); pintar(); };
-  $('#up-ninguno').onclick = () => { $$('[data-up-p]').forEach(p => { p.checked = false; }); pintar(); };
+  $$('[data-up-p],[data-up-m]').forEach(ch => ch.onchange = pintar);
+  $$('[data-up-area]').forEach(ch => ch.onchange = () => { $$(`[data-area="${ch.dataset.upArea}"]`, $('#up-personas')).forEach(p => { p.checked = ch.checked; }); pintar(); });
+  $('#up-todos').onclick = () => { $$('[data-up-p],[data-up-m]').forEach(p => { p.checked = true; }); pintar(); };
+  $('#up-ninguno').onclick = () => { $$('[data-up-p],[data-up-m]').forEach(p => { p.checked = false; }); pintar(); };
   pintar();
 
   $('#up-analizar').onclick = () => {
@@ -3133,7 +3296,8 @@ function modalActualizarDocumento(docId) {
     _actState.version = $('#up-version').value.trim() || nueva;
     if (_actState.version === d.version) { toast('Versión repetida', 'La nueva versión debe ser distinta de la actual.', 'warn'); return; }
     _actState.destinatarios = sel();
-    if (!_actState.destinatarios.length) { toast('Sin destinatarios', 'Marque al menos un área o una persona.', 'warn'); return; }
+    _actState.managersAviso = selM();
+    if (!_actState.destinatarios.length && !_actState.managersAviso.length) { toast('Sin destinatarios', 'Marque al menos un área o una persona.', 'warn'); return; }
     _actState.nivel = $('#up-nivel').value;
     _actState.accion = accion();
     _actState.resumen = resumen;
@@ -3287,7 +3451,7 @@ function publicarActualizacion() {
   d.version = version;
   d.estado = 'actualizado';
   d.actualizado = HOY;
-  d.cambios.unshift({ v: version, fecha: HOY, nivel, detalle: resumen, envio: conExamen ? 'Releer + micro evaluación' : 'Solo notificación', destinatarios: destinatarios.length });
+  d.cambios.unshift({ v: version, fecha: HOY, nivel, detalle: resumen, envio: conExamen ? 'Releer + micro evaluación' : 'Solo notificación', destinatarios: destinatarios.length + (_actState.managersAviso || []).length });
 
   let ev = null;
   if (conExamen) {
@@ -3316,14 +3480,18 @@ function publicarActualizacion() {
     releen.push(c.nombre);
   });
 
-  notificar({ tipo: 'actualizacion', titulo: 'Documento actualizado', para: destinatarios.map(c => c.nombre),
+  const avisoManagers = _actState.managersAviso || [];
+  if (avisoManagers.length) notificar({ tipo: 'actualizacion', titulo: 'Documento actualizado', para: avisoManagers,
+    detalle: `${d.titulo} pasó de v${versionAnterior} a v${version} (cambio ${nivel}): ${resumen}. Aviso informativo para su equipo; no requiere acción de su parte.`,
+    destino: avisoManagers.join(', ') });
+  if (destinatarios.length) notificar({ tipo: 'actualizacion', titulo: 'Documento actualizado', para: destinatarios.map(c => c.nombre),
     detalle: `${d.titulo} pasó de v${versionAnterior} a v${version} (cambio ${nivel}): ${resumen}. ${conExamen
       ? 'Si ya lo había leído, debe releerlo y rendir la micro evaluación del cambio. Lo que hizo en la versión anterior queda registrado.'
       : 'Es solo un aviso: su lectura y su examen siguen vigentes.'}`,
     destino: destinatarios.map(c => c.nombre).join(', ') });
 
   closeModal();
-  toast('Actualización publicada', `Aviso enviado a ${destinatarios.length} persona(s)${conExamen ? ` · ${releen.length} deben releer y rendir la micro evaluación` : ''}${asignados.length ? ` · a ${asignados.length} se les asignó el documento` : ''}.`, 'ia');
+  toast('Actualización publicada', `Aviso enviado a ${destinatarios.length + (_actState.managersAviso || []).length} persona(s)${conExamen ? ` · ${releen.length} deben releer y rendir la micro evaluación` : ''}${asignados.length ? ` · a ${asignados.length} se les asignó el documento` : ''}.`, 'ia');
   _actState = null;
   render();
 }
@@ -3349,7 +3517,7 @@ function previsualizarEvaluacion(id) {
 ------------------------------------------------------------ */
 function abrirLector(docId) {
   const d = doc(docId);
-  const ca = S.user.colaboradorId ? colaboradorActivo() : null;
+  const ca = S.user.rol === 'colaborador' ? colaboradorActivo() : null;
   const md = ca ? ca.documentosRuta.find(m => m.docId === docId) : null;
   const yaLeido = md && md.estado === 'leido';
 
