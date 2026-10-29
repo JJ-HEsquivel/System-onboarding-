@@ -242,6 +242,8 @@ function estadoDoc(c, md) {
 
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const correoDe = (nombre) => nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, '.') + '@jalasoft.com';
+const correoCol = (c) => c.correo || correoDe(c.nombre);
+const correoValido = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 
 /* ------------------------------------------------------------
    2.2 Recalcular fase, avance, promedio y pendientes de un
@@ -843,10 +845,10 @@ const ROLES = {
 /* Cuentas con las que se puede ingresar en cada perfil */
 function cuentasDe(rol) {
   if (rol === 'colaborador') {
-    return S.colaboradores.filter(c => c.rolActual !== 'manager').map(c => ({ id: c.id, nombre: c.nombre,
+    return S.colaboradores.filter(c => c.rolActual !== 'manager').map(c => ({ id: c.id, nombre: c.nombre, correo: correoCol(c),
       sub: areaNom(c.area) + (c.estadoAlta === 'pendiente_validacion' ? ' · pendiente de validación' : '') }));
   }
-  return S.usuarios.filter(u => u.rol === rol).map(u => ({ id: u.id, nombre: u.nombre,
+  return S.usuarios.filter(u => u.rol === rol).map(u => ({ id: u.id, nombre: u.nombre, correo: u.correo,
     sub: u.cargo + (u.origen === 'ascenso' ? ' · ascendido' : '') }));
 }
 
@@ -897,7 +899,7 @@ function pintarLogin() {
   sel.innerHTML = cuentas.map(c => `<option value="${c.id}" ${c.id === S.cuentaSel[S.rolSel] ? 'selected' : ''}>${esc(c.nombre)} · ${esc(c.sub)}</option>`).join('');
   sel.onchange = () => { S.cuentaSel[S.rolSel] = sel.value; pintarLogin(); };
   const elegida = cuentas.find(c => c.id === S.cuentaSel[S.rolSel]);
-  $('#loginMail').value = elegida ? correoDe(elegida.nombre) : '';
+  $('#loginMail').value = elegida ? elegida.correo : '';
   $('#loginBtn').disabled = !elegida;
 }
 
@@ -906,7 +908,7 @@ function entrar() {
   if (!id) return;
   if (S.rolSel === 'colaborador') {
     const c = S.colaboradores.find(x => x.id === id); if (!c) return;
-    S.user = { rol: 'colaborador', nombre: c.nombre, cargo: c.cargo, area: c.area, correo: correoDe(c.nombre), colaboradorId: c.id };
+    S.user = { rol: 'colaborador', nombre: c.nombre, cargo: c.cargo, area: c.area, correo: correoCol(c), colaboradorId: c.id };
   } else {
     const u = S.usuarios.find(x => x.id === id); if (!u) return;
     S.user = { ...u };
@@ -1336,7 +1338,7 @@ function modalAscender(colId) {
     c.cargoAnterior = c.cargo;
     c.cargo = cargo;
     c.ascendidoEl = HOY;
-    S.usuarios.push({ id: nuevoId('U-MGR-'), rol: 'manager', nombre: c.nombre, cargo, area, correo: correoDe(c.nombre),
+    S.usuarios.push({ id: nuevoId('U-MGR-'), rol: 'manager', nombre: c.nombre, cargo, area, correo: correoCol(c),
       origen: 'ascenso', colaboradorId: c.id, ascendidoEl: HOY, ascendidoPor: S.user.nombre });
     equipo.forEach(id => { const x = S.colaboradores.find(y => y.id === id); if (x) x.manager = c.nombre; });
     S.evidencias.unshift({ id: nuevoId('EVD-'), colaborador: c.nombre, documento: `Ascenso: ${c.cargoAnterior} → ${cargo}`,
@@ -3802,7 +3804,7 @@ function modalNuevoColaborador() {
     <div class="modal__body">
       <div class="grid g-2" style="gap:0 16px">
         <div class="field"><span class="login__label">Nombre completo</span><input id="nc-nombre" placeholder="Ej. Ana Paredes"></div>
-        <div class="field"><span class="login__label">Correo corporativo</span><input id="nc-correo" placeholder="Se genera automáticamente" readonly></div>
+        <div class="field"><span class="login__label">Correo corporativo</span><input id="nc-correo" type="email" placeholder="Ej. ana.paredes@jalasoft.com" autocomplete="off"></div>
         <div class="field"><span class="login__label">Cargo</span><input id="nc-cargo" placeholder="Ej. QA Engineer"></div>
         <div class="field"><span class="login__label">Área</span>
           <select id="nc-area" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
@@ -3852,7 +3854,6 @@ function modalNuevoColaborador() {
     pintarRutaPreview();
   };
   $('#nc-manager').onchange = pintarRutaPreview;
-  $('#nc-nombre').oninput = () => { $('#nc-correo').value = $('#nc-nombre').value.trim() ? correoDe($('#nc-nombre').value.trim()) : ''; };
   $('#nc-area').onchange();
 
   $('#saveCol').onclick = () => {
@@ -3863,13 +3864,15 @@ function modalNuevoColaborador() {
     const ingreso = $('#nc-ingreso').value || HOY;
     if (nombre.split(' ').length < 2) { toast('Falta el nombre completo', 'Escriba nombre y apellido del colaborador.', 'warn'); return; }
     if (!manager) { toast('Falta el Manager', 'Seleccione quién validará su documentación.', 'warn'); return; }
-    const correo = correoDe(nombre);
-    if (S.colaboradores.some(c => correoDe(c.nombre) === correo) || S.usuarios.some(u => u.correo === correo)) {
-      toast('Ya existe ese correo', `${correo} ya está registrado.`, 'warn'); return;
+    const correo = $('#nc-correo').value.trim().toLowerCase();
+    if (!correo) { toast('Falta el correo', 'Escriba el correo corporativo del colaborador.', 'warn'); $('#nc-correo').focus(); return; }
+    if (!correoValido(correo)) { toast('Correo no válido', 'Revise el formato, por ejemplo nombre.apellido@jalasoft.com.', 'warn'); $('#nc-correo').focus(); return; }
+    if (S.colaboradores.some(c => correoCol(c) === correo) || S.usuarios.some(u => u.correo === correo)) {
+      toast('Ya existe ese correo', `${correo} ya está registrado.`, 'warn'); $('#nc-correo').focus(); return;
     }
 
     S.colaboradores.unshift({
-      id: nuevoId('C-'), nombre, cargo, area, manager, ingreso, registradoPor: S.user.nombre,
+      id: nuevoId('C-'), nombre, correo, cargo, area, manager, ingreso, registradoPor: S.user.nombre,
       estadoAlta:'pendiente_validacion', fase:0, progreso:0, estado:'por_iniciar',
       promedio:0, pendientes:0, ultimaActividad:'Sin actividad', riesgo:'bajo',
       documentosRuta: rutaBaseParaArea(area).map(docId => ({ docId, etapaId: doc(docId).etapaId, estado:'pendiente', confirmado:null, vence:null, origen:'Propuesto' })),
