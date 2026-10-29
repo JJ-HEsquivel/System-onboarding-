@@ -651,3 +651,9 @@ button.vrow__h:hover{background:#FAFBFD}
   .vrow__k small{display:inline;color:var(--muted);margin-right:6px}
   .vrow__h--cab{display:none}
 }
+
+/* Correo con dominio fijo en el alta de colaborador */
+.inputdom{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:var(--r-sm);background:#fff;overflow:hidden}
+.inputdom:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-050)}
+.field .inputdom input{border:0;border-radius:0;flex:1;min-width:0;outline:none}
+.inputdom span{display:flex;align-items:center;padding:0 12px;background:#F7F9FC;border-left:1px solid var(--line);color:var(--text-2);font-size:13.4px;white-space:nowrap}

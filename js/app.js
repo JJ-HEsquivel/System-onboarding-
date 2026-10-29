@@ -244,6 +244,8 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate
 const correoDe = (nombre) => nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, '.') + '@jalasoft.com';
 const correoCol = (c) => c.correo || correoDe(c.nombre);
 const correoValido = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+// Dominio corporativo de los colaboradores: el Admin escribe solo el usuario
+const DOMINIO_CORREO = '@jala.global';
 
 /* ------------------------------------------------------------
    2.2 Recalcular fase, avance, promedio y pendientes de un
@@ -3828,7 +3830,8 @@ function modalNuevoColaborador() {
     <div class="modal__body">
       <div class="grid g-2" style="gap:0 16px">
         <div class="field"><span class="login__label">Nombre completo</span><input id="nc-nombre" placeholder="Ej. Ana Paredes"></div>
-        <div class="field"><span class="login__label">Correo corporativo</span><input id="nc-correo" type="email" placeholder="Ej. ana.paredes@jalasoft.com" autocomplete="off"></div>
+        <div class="field"><span class="login__label">Correo corporativo</span>
+          <div class="inputdom"><input id="nc-correo" placeholder="Ej. ana.paredes" autocomplete="off" spellcheck="false"><span>${DOMINIO_CORREO}</span></div></div>
         <div class="field"><span class="login__label">Cargo</span><input id="nc-cargo" placeholder="Ej. QA Engineer"></div>
         <div class="field"><span class="login__label">Área</span>
           <select id="nc-area" style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px">
@@ -3888,9 +3891,10 @@ function modalNuevoColaborador() {
     const ingreso = $('#nc-ingreso').value || HOY;
     if (nombre.split(' ').length < 2) { toast('Falta el nombre completo', 'Escriba nombre y apellido del colaborador.', 'warn'); return; }
     if (!manager) { toast('Falta el Manager', 'Seleccione quién validará su documentación.', 'warn'); return; }
-    const correo = $('#nc-correo').value.trim().toLowerCase();
-    if (!correo) { toast('Falta el correo', 'Escriba el correo corporativo del colaborador.', 'warn'); $('#nc-correo').focus(); return; }
-    if (!correoValido(correo)) { toast('Correo no válido', 'Revise el formato, por ejemplo nombre.apellido@jalasoft.com.', 'warn'); $('#nc-correo').focus(); return; }
+    const usuario = $('#nc-correo').value.trim().toLowerCase().split('@')[0];
+    if (!usuario) { toast('Falta el correo', 'Escriba el usuario del correo corporativo (lo que va antes de ' + DOMINIO_CORREO + ').', 'warn'); $('#nc-correo').focus(); return; }
+    if (!/^[a-z0-9]+([._-][a-z0-9]+)*$/.test(usuario)) { toast('Correo no válido', 'Use solo letras, números, punto, guion o guion bajo; por ejemplo ana.paredes.', 'warn'); $('#nc-correo').focus(); return; }
+    const correo = usuario + DOMINIO_CORREO;
     if (S.colaboradores.some(c => correoCol(c) === correo) || S.usuarios.some(u => u.correo === correo)) {
       toast('Ya existe ese correo', `${correo} ya está registrado.`, 'warn'); $('#nc-correo').focus(); return;
     }
