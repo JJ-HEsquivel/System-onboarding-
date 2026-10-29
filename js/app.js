@@ -1275,20 +1275,24 @@ function vRoles() {
   </section>
 
   <section class="card mt-16">
-    <div class="card__head"><div><h3>Candidatos a ascenso</h3><p>Colaboradores registrados y si cumplen el requisito</p></div></div>
+    <div class="card__head"><div><h3>Candidatos a ascenso</h3><p>${S.config.exigirInduccionParaAscenso ? 'Colaboradores que ya completaron su inducción' : 'Colaboradores activos (el requisito de inducción está desactivado en Configuración)'}</p></div></div>
+    ${!elegibles.length ? `<div class="card__body">${vacio('Aún nadie está listo para el ascenso',
+      candidatos.length
+        ? `Para ascender, un colaborador debe completar su inducción. Hoy hay ${candidatos.filter(c => c.estadoAlta === 'activo').length} en curso y ${candidatos.filter(c => c.estadoAlta === 'pendiente_validacion').length} por validar.`
+        : 'Todavía no hay colaboradores registrados.')}</div>` : `
     <div class="card__body card__body--flush tablewrap">
-      <table class="tbl"><thead><tr><th>Colaborador</th><th>Área</th><th>Manager actual</th><th>Documentos</th><th>Promedio</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${candidatos.map(c => { const motivo = elegibilidadAscenso(c); return `<tr>
+      <table class="tbl"><thead><tr><th>Colaborador</th><th>Área</th><th>Manager actual</th><th>Documentos</th><th>Promedio</th><th>Inducción cerrada</th><th></th></tr></thead><tbody>
+      ${elegibles.map(c => `<tr>
         <td>${persona(c.nombre, c.cargo)}</td>
         <td>${areaNom(c.area)}</td>
         <td>${esc(c.manager)}</td>
         <td class="num">${docTxt(c)}</td>
         <td class="num">${c.promedio ? c.promedio + '%' : '—'}</td>
-        <td>${badgeCol(c)}</td>
-        <td class="r">${motivo ? `<span class="small muted">${esc(motivo)}</span>` : `<button class="btn btn--sm btn--primary" data-ascender="${c.id}">${svg(ICO.award)} Ascender a Manager</button>`}</td>
-      </tr>`; }).join('') || `<tr><td colspan="7" class="tbl__empty">Todavía no hay colaboradores registrados.</td></tr>`}
+        <td class="num">${c.cerradoEl ? fechaLarga(c.cerradoEl) : '—'}</td>
+        <td class="r"><button class="btn btn--sm btn--primary" data-ascender="${c.id}">${svg(ICO.award)} Ascender a Manager</button></td>
+      </tr>`).join('')}
       </tbody></table>
-    </div>
+    </div>`}
   </section>
 
   <section class="card mt-16">
@@ -2313,21 +2317,26 @@ function vMisDocs() {
       <span class="docitem__a"><span class="badge badge--${st.b}">${st.t}</span>${accionDoc(ca, md)}</span>
     </div>`; };
 
-  const porHacer = ca.documentosRuta.filter(md => estadoDoc(ca, md).k !== 'aprobado');
-  const aprobados = ca.documentosRuta.filter(md => estadoDoc(ca, md).k === 'aprobado');
-  const porLeer = porHacer.filter(md => md.estado !== 'leido');
+  // Una sola lista, en el orden de la ruta: al aprobar, el documento cambia de estado
+  // en su mismo lugar (no se mueve a otra sección).
+  const total = ca.documentosRuta.length;
+  const aprobados = ca.documentosRuta.filter(md => estadoDoc(ca, md).k === 'aprobado').length;
+  const porLeer = ca.documentosRuta.filter(md => md.estado !== 'leido');
+  const conExamen = ca.documentosRuta.filter(md => estadoDoc(ca, md).k === 'examen').length;
 
   return head('misdocs') + `
   <section class="card">
-    <div class="card__head"><div><h3>Por completar</h3><p>${porLeer.length} por leer · ${porHacer.length - porLeer.length} con examen por rendir · el documento suma recién al aprobar su examen</p></div>
-      <div class="right"><span class="tag">${porLeer.reduce((a, m) => a + doc(m.docId).minutos, 0)} min de lectura</span></div></div>
-    <div class="card__body">${porHacer.length ? `<div class="doclist">${porHacer.map(fila).join('')}</div>` :
-      `<div class="empty">${svg(ICO.check)}<b>Aprobó todos sus documentos</b>Le avisaremos cuando se publique una nueva versión.</div>`}</div>
-  </section>
-
-  <section class="card mt-16">
-    <div class="card__head"><div><h3>Aprobados (${aprobados.length} de ${ca.documentosRuta.length})</h3><p>Lectura confirmada y examen aprobado · queda registrado como evidencia</p></div></div>
-    <div class="card__body">${aprobados.length ? `<div class="doclist">${aprobados.map(fila).join('')}</div>` : '<div class="empty"><b>Todavía no aprueba ningún documento</b>Lea un documento y rinda su examen para sumar el primero.</div>'}</div>
+    <div class="card__head"><div><h3>Sus documentos · ${aprobados} de ${total} aprobados</h3>
+      <p>${porLeer.length} por leer · ${conExamen} con examen por rendir · el documento suma recién al aprobar su examen</p></div>
+      <div class="right"><span class="tag">${porLeer.reduce((x, m) => x + ((doc(m.docId) || {}).minutos || 0), 0)} min de lectura pendientes</span></div></div>
+    <div class="card__body">
+      ${etapasResumen(ca).map(et => `
+        <div class="etapa-card">
+          <div class="etapa-card__h"><b>${esc(et.nombre)}</b>
+            <span class="small muted">${et.docs.filter(md => estadoDoc(ca, md).k === 'aprobado').length} de ${et.total} aprobados</span></div>
+          <div class="doclist">${et.docs.map(fila).join('')}</div>
+        </div>`).join('') || vacio('Sin documentos asignados')}
+    </div>
   </section>`;
 }
 
