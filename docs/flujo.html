@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flujo de la plataforma</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #ffffff; --ink: #172033; --muted: #5d6779; --line: #d5dbe5;
+    --admin: #2557d6; --admin-bg: #e8eefc;
+    --mgr: #c0359a; --mgr-bg: #fbe9f5;
+    --col: #6b3fd0; --col-bg: #efe9fc;
+    --sys: #4a5568; --sys-bg: #eceff4;
+    --ok: #1d8a4e; --ok-bg: #e5f5ec;
+    --bad: #c2410c; --bad-bg: #fdeee5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10141c; --card: #181e2a; --ink: #e7ebf3; --muted: #9aa4b6; --line: #2c3546;
+      --admin: #7ea2ff; --admin-bg: #1c2a4a; --mgr: #f08ad2; --mgr-bg: #3a1d33;
+      --col: #b49aff; --col-bg: #2a2147; --sys: #b5bfd0; --sys-bg: #252d3b;
+      --ok: #5fd394; --ok-bg: #173526; --bad: #ff9c6b; --bad-bg: #3a2216;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141c; --card: #181e2a; --ink: #e7ebf3; --muted: #9aa4b6; --line: #2c3546;
+    --admin: #7ea2ff; --admin-bg: #1c2a4a; --mgr: #f08ad2; --mgr-bg: #3a1d33;
+    --col: #b49aff; --col-bg: #2a2147; --sys: #b5bfd0; --sys-bg: #252d3b;
+    --ok: #5fd394; --ok-bg: #173526; --bad: #ff9c6b; --bad-bg: #3a2216;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  h2 { margin: 40px 0 6px; font-size: 19px; }
+  .lead { margin: 0; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+  .role { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .r-admin { color: var(--admin); background: var(--admin-bg); }
+  .r-mgr { color: var(--mgr); background: var(--mgr-bg); }
+  .r-col { color: var(--col); background: var(--col-bg); }
+  .r-sys { color: var(--sys); background: var(--sys-bg); }
+
+  /* Flujo principal */
+  .flow { display: flex; flex-direction: column; align-items: center; margin-top: 12px; }
+  .step { width: 100%; max-width: 640px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--sys); border-radius: 10px; padding: 12px 16px; }
+  .step.admin { border-left-color: var(--admin); }
+  .step.mgr { border-left-color: var(--mgr); }
+  .step.col { border-left-color: var(--col); }
+  .step h3 { margin: 4px 0 4px; font-size: 16px; }
+  .step p, .step li { margin: 0; color: var(--muted); font-size: 14px; }
+  .step ul { margin: 4px 0 0; padding-left: 18px; }
+  .num { float: right; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .arrow { width: 2px; height: 26px; background: var(--line); position: relative; }
+  .arrow::after { content: ""; position: absolute; bottom: -1px; left: -5px; border: 6px solid transparent; border-top-color: var(--line); border-bottom: 0; }
+  .decision { width: 100%; max-width: 640px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .q { grid-column: 1 / -1; text-align: center; font-weight: 600; padding: 8px; border: 2px dashed var(--line); border-radius: 10px; background: var(--card); }
+  .out { border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+  .out b { display: block; }
+  .yes { background: var(--ok-bg); color: var(--ok); }
+  .no { background: var(--bad-bg); color: var(--bad); }
+  .out span { color: var(--ink); opacity: .85; }
+  .phase { width: 100%; max-width: 640px; margin: 18px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+  /* Bifurcaciones */
+  .branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 14px; }
+  .branch { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .branch > header h3 { margin: 0; font-size: 16px; }
+  .branch > header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 6px; margin-bottom: 4px; }
+  .mini { border-left: 4px solid var(--sys); padding: 6px 10px; background: var(--bg); border-radius: 0 8px 8px 0; font-size: 14px; }
+  .mini.admin { border-left-color: var(--admin); }
+  .mini.mgr { border-left-color: var(--mgr); }
+  .mini.col { border-left-color: var(--col); }
+  .mini .role { margin-right: 6px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .split .out { font-size: 13px; }
+  .down { text-align: center; color: var(--muted); line-height: 1; }
+
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 14px; }
+  .rule { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+  .rule b { display: block; margin-bottom: 2px; }
+  .rule span { color: var(--muted); }
+  @media (max-width: 520px) { .decision, .split { grid-template-columns: 1fr; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Flujo de la plataforma de inducción y micro aprendizaje</h1>
+  <p class="lead">Cómo avanza un colaborador desde su registro hasta el ascenso, y los flujos paralelos que el Administrador puede iniciar en cualquier momento.</p>
+  <div class="legend">
+    <span class="role r-admin">Administrador</span>
+    <span class="role r-mgr">Manager</span>
+    <span class="role r-col">Colaborador</span>
+    <span class="role r-sys">Sistema (automático)</span>
+  </div>
+
+  <h2>Flujo principal</h2>
+  <p class="lead">Es el camino que recorre cada colaborador, de principio a fin.</p>
+  <div class="flow">
+    <div class="phase">Fase 1 · Registro y bienvenida</div>
+    <div class="step admin"><span class="num">1</span><span class="role r-admin">Administrador</span>
+      <h3>Registra al colaborador</h3>
+      <ul><li>Nombre, cargo, área y Manager responsable.</li>
+        <li>Correo: escribe solo el usuario; el dominio <b>@jala.global</b> ya viene puesto.</li></ul></div>
+    <div class="arrow"></div>
+    <div class="step"><span class="num">2</span><span class="role r-sys">Sistema</span>
+      <h3>Arma la ruta de documentos</h3>
+      <ul><li>Etapas 1 y 2 completas, más 2 documentos de la Etapa 3 de su área.</li>
+        <li>El colaborador queda <b>Por validar</b>.</li>
+        <li>Avisa al Manager: «Se le asignó un nuevo colaborador por parte del Administrador».</li></ul></div>
+    <div class="arrow"></div>
+    <div class="step mgr"><span class="num">3</span><span class="role r-mgr">Manager</span>
+      <h3>Revisa y valida la ruta</h3>
+      <ul><li>Lo encuentra en «Nuevos por validar», una lista desplegable.</li>
+        <li>Solo en la Etapa 3 puede <b>quitar o agregar</b> documentos específicos del área.</li>
+        <li>Al validar, el colaborador pasa a <b>Activo</b>.</li></ul></div>
+
+    <div class="phase">Fase 2 · Proceso de inducción</div>
+    <div class="step col"><span class="num">4</span><span class="role r-col">Colaborador</span>
+      <h3>Ingresa, lee cada documento y confirma la lectura</h3>
+      <p>Los ve en una sola lista ordenada por etapa. Leer no basta: cada documento tiene su propio examen de 5 preguntas.</p></div>
+    <div class="arrow"></div>
+    <div class="step col"><span class="num">5</span><span class="role r-col">Colaborador</span>
+      <h3>Rinde el examen del documento</h3>
+      <p>Mínimo 80 %, con hasta 3 intentos.</p></div>
+    <div class="arrow"></div>
+    <div class="decision">
+      <div class="q">¿Aprobó el examen?</div>
+      <div class="out yes"><b>Sí</b><span>El documento pasa a «Aprobado» en el mismo lugar de la lista y suma al avance (por ejemplo, 8 de 14).</span></div>
+      <div class="out no"><b>No</b><span>Vuelve a intentarlo. Si agota los 3 intentos, su Manager le habilita uno nuevo.</span></div>
+    </div>
+    <div class="arrow"></div>
+    <div class="decision">
+      <div class="q">¿Aprobó todos los documentos de su ruta?</div>
+      <div class="out no"><b>No</b><span>Sigue con el siguiente documento (vuelve al paso 4).</span></div>
+      <div class="out yes"><b>Sí</b><span>Su inducción queda <b>cerrada</b>, con fecha.</span></div>
+    </div>
+    <div class="arrow"></div>
+    <div class="step admin"><span class="num">6</span><span class="role r-admin">Administrador</span>
+      <h3>Lo ve en «Candidatos a ascenso» y decide si lo asciende</h3>
+      <ul><li>Mientras nadie cierre su inducción, la sección dice «Aún nadie está listo para el ascenso».</li>
+        <li>Si lo asciende a Manager, su inducción queda como historial de solo lectura y ya no recibe documentos para leer.</li></ul></div>
+  </div>
+
+  <h2>Fase 3 · Micro aprendizaje y actualización de documentos</h2>
+  <p class="lead">Son flujos que se separan del principal. El Administrador los inicia cuando hace falta y alcanzan a los colaboradores activos que él elige.</p>
+  <div class="branches">
+
+    <section class="branch">
+      <header><span class="tag">A</span><h3>El Administrador lanza una campaña de micro aprendizaje</h3>
+        <p>Sirve para reforzar un tema de forma periódica.</p></header>
+      <div class="mini admin"><span class="role r-admin">Admin</span>Crea la campaña: elige el documento, las preguntas, las áreas, la periodicidad (diaria, semanal o quincenal) y cuántos envíos se hacen (por ejemplo, 3).</div>
+      <div class="mini"><span class="role r-sys">Sistema</span>Cada envío llega a los colaboradores elegidos, que tienen 2 días para responder.</div>
+      <div class="mini col"><span class="role r-col">Colaborador</span>Responde la microevaluación. Su avance se ve como «respondidas de recibidas».</div>
+      <div class="split">
+        <div class="out yes"><b>Respondió a tiempo</b><span>Suma a la tasa de respuesta y al acierto.</span></div>
+        <div class="out no"><b>Llegó el siguiente envío</b><span>El anterior vence. El colaborador pide un reenvío y el Manager o el Admin se lo reenvía, de nuevo con 2 días.</span></div>
+      </div>
+      <div class="mini"><span class="role r-sys">IA</span>Si una pregunta tiene muchos errores, el sistema sugiere una nueva campaña sobre ese tema.</div>
+    </section>
+
+    <section class="branch">
+      <header><span class="tag">B</span><h3>El Administrador actualiza un documento</h3>
+        <p>Sirve para cuando una política o un procedimiento cambia.</p></header>
+      <div class="mini admin"><span class="role r-admin">Admin</span>Sube la nueva versión. La IA propone preguntas, y el Administrador puede editar las preguntas, las opciones, la respuesta correcta y la justificación.</div>
+      <div class="mini admin"><span class="role r-admin">Admin</span>Elige a quién le llega: por área y por persona.</div>
+      <div class="down">▼ ¿Qué tipo de cambio es?</div>
+      <div class="split">
+        <div class="out no"><b>Cambio fuerte</b><span>El avance de la versión anterior se archiva. El colaborador debe <b>releer y rendir una microevaluación</b>.</span></div>
+        <div class="out yes"><b>Cambio menor</b><span>El Administrador elige entre <b>solo notificar</b> o pedir <b>releer y rendir una microevaluación</b>.</span></div>
+      </div>
+      <div class="mini col"><span class="role r-col">Colaborador</span>Ve el aviso. Si le toca examen, aparece en su documento y lo rinde.</div>
+      <div class="mini mgr"><span class="role r-mgr">Manager</span>Solo recibe el aviso. Puede leer el documento, pero no rinde nada.</div>
+    </section>
+
+    <section class="branch">
+      <header><span class="tag">C</span><h3>El Administrador publica o retira un documento</h3>
+        <p>Sirve para mantener el repositorio al día.</p></header>
+      <div class="mini admin"><span class="role r-admin">Publicar</span>Si lo indica, el documento nuevo se suma a la ruta de las áreas afectadas.</div>
+      <div class="mini col"><span class="role r-col">Colaborador</span>Recibe el aviso. El documento entra a su lista con su examen, como en los pasos 4 y 5.</div>
+      <div class="mini admin"><span class="role r-admin">Retirar</span>Sale del repositorio, de todas las rutas y de sus campañas. Las evidencias que ya existían se conservan.</div>
+      <div class="mini"><span class="role r-sys">Sistema</span>Recalcula el avance de cada colaborador afectado y le avisa.</div>
+    </section>
+  </div>
+
+  <h2>Reglas automáticas que corren todo el tiempo</h2>
+  <div class="rules">
+    <div class="rule"><b>Aviso de vencimiento</b><span>48 h antes de que venza una lectura o un envío.</span></div>
+    <div class="rule"><b>Lectura vencida</b><span>El colaborador pasa a «Atrasado» y su Manager recibe un aviso.</span></div>
+    <div class="rule"><b>Inactividad</b><span>Recordatorio a los 3 días y escalamiento al Manager a los 5.</span></div>
+    <div class="rule"><b>Envíos programados</b><span>Las campañas mandan cada envío según su periodicidad.</span></div>
+  </div>
+</main>
+</body>
+</html>
