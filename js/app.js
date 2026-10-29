@@ -988,7 +988,7 @@ function render() {
     return `<button class="navitem ${i.id === S.view ? 'is-active' : ''}" data-view="${i.id}">
       ${svg(ICO[i.i])}<span>${i.t}</span>${b ? `<span class="pill ${i.alert ? 'is-alert' : ''} num">${b}</span>` : ''}</button>`;
   }).join('');
-  $$('.navitem').forEach(b => b.onclick = () => { S.view = b.dataset.view; closeDrawer(); $('#rail').classList.remove('is-on'); render(); window.scrollTo(0, 0); });
+  $$('.navitem').forEach(b => b.onclick = () => { S.view = b.dataset.view; if (S.view === 'validar') S.validarAbierto = null; closeDrawer(); $('#rail').classList.remove('is-on'); render(); window.scrollTo(0, 0); });
 
   const rolTxt = rol === 'admin' ? 'Administración' : rol === 'manager' ? 'Manager' : 'Colaborador';
   const [tt] = TITULOS[S.view] || ['—'];
@@ -1852,7 +1852,7 @@ function vManagerDashboard() {
       <b>Se le asignó un nuevo colaborador por parte del Administrador ${esc(c.registradoPor || '')}</b>
       <p>${esc(c.nombre)} · ${esc(c.cargo)} · ${areaNom(c.area)} · ingreso el ${fechaLarga(c.ingreso)}. Revise su documentación (puede ajustar la Etapa 3) y confirme para activar su acceso.</p>
     </div>
-    <button class="btn btn--primary btn--sm" data-view-go="validar">Revisar y validar</button>
+    <button class="btn btn--primary btn--sm" data-val-ir="${c.id}">Revisar y validar</button>
   </div>`).join('')}
 
   <div class="grid g-4">
@@ -1909,49 +1909,62 @@ function vManagerDashboard() {
 ------------------------------------------------------------ */
 function vValidarLista() {
   const pend = S.colaboradores.filter(c => c.estadoAlta === 'pendiente_validacion' && c.manager === S.user.nombre);
-  return head('validar') + (pend.length ? pend.map(c => `
-    <section class="card mt-16">
-      <div class="card__head">
-        ${persona(c.nombre, c.cargo)}
-        <div class="right"><span class="badge badge--warn">Pendiente de validación</span></div>
+  if (!pend.some(c => c.id === S.validarAbierto)) S.validarAbierto = null;
+  if (!pend.length) return head('validar') + `<div class="empty">${svg(ICO.check)}<b>No tiene colaboradores pendientes de validación</b>Los nuevos registros que le asigne el Admin aparecerán aquí antes de activarse.</div>`;
+
+  // Detalle de un colaborador (se muestra al desplegar su fila)
+  const detalle = (c) => `
+    <div class="vrow__b">
+      <div class="sec__t">Documentación por etapa · las Etapas 1 y 2 son obligatorias; en la Etapa 3 puede quitar o sumar documentos del área</div>
+      <div id="chk-${c.id}">
+        ${documentosPorEtapa(c.area).map(({ etapa, docs }) => {
+          const area3 = etapa.alcance === 'area';
+          const marcados = docs.filter(d => c.documentosRuta.some(x => x.docId === d.id)).length;
+          return `<div class="etapa-card">
+            <div class="etapa-card__h"><b>${esc(etapa.nombre)}</b>
+              <span class="small muted" ${area3 ? `data-cuenta="${c.id}"` : ''}>${area3 ? `${marcados} de ${docs.length} seleccionados` : `${docs.length} documentos obligatorios`}</span>
+              ${area3 ? '<span class="badge badge--info">Editable por el Manager</span>' : '<span class="badge badge--muted">Fija</span>'}</div>
+            <div class="doclist">
+            ${docs.map(d => `
+              <label class="docitem" style="cursor:${area3 ? 'pointer' : 'default'}">
+                <input type="checkbox" data-val-doc="${d.id}" ${area3 ? 'data-etapa3' : 'disabled'} ${!area3 || c.documentosRuta.some(x => x.docId === d.id) ? 'checked' : ''} style="width:16px;height:16px;flex:none">
+                <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}">${svg(ICO.file)}</span>
+                <span class="docitem__b"><b>${esc(d.titulo)}</b>
+                  <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
+                <span class="docitem__a">${area3 ? (d.porDefecto ? '<span class="badge badge--ok">Enviado por el Admin</span>' : '<span class="badge badge--muted">Adicional del área</span>') : ''}
+                  <span class="badge badge--${d.criticidad === 'alta' ? 'danger' : 'muted'}">${d.criticidad}</span></span>
+              </label>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
-      <div class="card__body">
-        <dl class="kv">
-          <dt>Área</dt><dd>${areaNom(c.area)}</dd>
-          <dt>Fecha de ingreso</dt><dd class="num">${fechaLarga(c.ingreso)}</dd>
-          <dt>Registrado por</dt><dd>${esc(c.registradoPor || 'Administración')}</dd>
-        </dl>
-        <div class="divider"></div>
-        <div class="sec__t">Documentación por etapa · las Etapas 1 y 2 son obligatorias; en la Etapa 3 puede quitar o sumar documentos del área</div>
-        <div id="chk-${c.id}">
-          ${documentosPorEtapa(c.area).map(({ etapa, docs }) => {
-            const area3 = etapa.alcance === 'area';
-            const marcados = docs.filter(d => c.documentosRuta.some(x => x.docId === d.id)).length;
-            return `<div class="etapa-card">
-              <div class="etapa-card__h"><b>${esc(etapa.nombre)}</b>
-                <span class="small muted" ${area3 ? `data-cuenta="${c.id}"` : ''}>${area3 ? `${marcados} de ${docs.length} seleccionados` : `${docs.length} documentos obligatorios`}</span>
-                ${area3 ? '<span class="badge badge--info">Editable por el Manager</span>' : '<span class="badge badge--muted">Fija</span>'}</div>
-              <div class="doclist">
-              ${docs.map(d => `
-                <label class="docitem" style="cursor:${area3 ? 'pointer' : 'default'}">
-                  <input type="checkbox" data-val-doc="${d.id}" ${area3 ? 'data-etapa3' : 'disabled'} ${!area3 || c.documentosRuta.some(x => x.docId === d.id) ? 'checked' : ''} style="width:16px;height:16px;flex:none">
-                  <span class="docitem__ic ${d.criticidad === 'alta' ? 'crit' : ''}">${svg(ICO.file)}</span>
-                  <span class="docitem__b"><b>${esc(d.titulo)}</b>
-                    <span class="docitem__m"><span>${d.codigo}</span><span>v${d.version}</span><span>${d.minutos} min</span></span></span>
-                  <span class="docitem__a">${area3 ? (d.porDefecto ? '<span class="badge badge--ok">Enviado por el Admin</span>' : '<span class="badge badge--muted">Adicional del área</span>') : ''}
-                    <span class="badge badge--${d.criticidad === 'alta' ? 'danger' : 'muted'}">${d.criticidad}</span></span>
-                </label>`).join('')}
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-      <div class="card__foot">
+      <div class="vrow__f">
         <button class="btn btn--primary" data-validar="${c.id}">${svg(ICO.check)} Confirmar y activar ruta</button>
         <span class="small muted">Al confirmar, el sistema envía el correo de bienvenida y el colaborador puede empezar a leer.</span>
       </div>
-    </section>`).join('')
-    : `<div class="empty">${svg(ICO.check)}<b>No tiene colaboradores pendientes de validación</b>Los nuevos registros que le asigne el Admin aparecerán aquí antes de activarse.</div>`);
+    </div>`;
+
+  return head('validar') + `
+  <section class="card">
+    <div class="card__head"><div><h3>Por validar (${pend.length})</h3><p>Haga clic en un colaborador para revisar y confirmar su documentación</p></div></div>
+    <div class="vlist">
+      <div class="vrow__h vrow__h--cab" aria-hidden="true">
+        <span>Colaborador</span><span>Área</span><span>Ingreso</span><span>Registrado por</span><span>Estado</span><span></span>
+      </div>
+      ${pend.map(c => { const abierto = c.id === S.validarAbierto; const espera = diasDesde((c.fechaRegistro || HOY).slice(0, 10)); return `
+      <div class="vrow ${abierto ? 'is-open' : ''}" id="val-${c.id}">
+        <button class="vrow__h" type="button" data-val-toggle="${c.id}" aria-expanded="${abierto}">
+          <span>${persona(c.nombre, c.cargo)}</span>
+          <span class="vrow__k"><small>Área</small>${areaNom(c.area)}</span>
+          <span class="vrow__k num"><small>Ingreso</small>${fechaLarga(c.ingreso)}</span>
+          <span class="vrow__k"><small>Registrado por</small>${esc(c.registradoPor || 'Administración')}</span>
+          <span><span class="badge badge--warn">Pendiente de validación</span>${espera > 0 ? `<small class="vrow__esp">hace ${espera} día${espera > 1 ? 's' : ''}</small>` : ''}</span>
+          <span class="vrow__chev">${svg(ICO.chevron)}</span>
+        </button>
+        ${abierto ? detalle(c) : ''}
+      </div>`; }).join('')}
+    </div>
+  </section>`;
 }
 
 function validarColaborador(id) {
@@ -1975,6 +1988,7 @@ function validarColaborador(id) {
   c.evaluacionesRuta = [];
 
   c.estadoAlta = 'activo';
+  S.validarAbierto = null;
   sincronizarEvaluaciones(c);
   c.validadoPor = S.user.nombre;
   c.fechaValidacion = ahora();
@@ -2699,6 +2713,16 @@ function bindVista() {
 
   // Validación de colaboradores nuevos (Manager)
   $$('[data-validar]').forEach(b => b.onclick = () => validarColaborador(b.dataset.validar));
+  $$('[data-val-toggle]').forEach(b => b.onclick = () => {
+    const id = b.dataset.valToggle;
+    S.validarAbierto = S.validarAbierto === id ? null : id;
+    render();
+    const fila = $('#val-' + id);
+    if (fila) window.scrollTo({ top: fila.getBoundingClientRect().top + window.scrollY - 76, behavior: 'smooth' });
+  });
+  // Ir directo a validar un colaborador (aviso del panel del Manager o ficha)
+  $$('[data-val-ir]').forEach(b => b.onclick = () => { S.validarAbierto = b.dataset.valIr; S.view = 'validar'; closeDrawer(); render();
+    const fila = $('#val-' + b.dataset.valIr); if (fila) window.scrollTo({ top: fila.getBoundingClientRect().top + window.scrollY - 76 }); });
   // Contador "x de y seleccionados" de la Etapa 3 mientras el Manager marca/desmarca
   $$('[data-etapa3]').forEach(ch => ch.onchange = () => {
     const box = ch.closest('.etapa-card');
@@ -2912,7 +2936,7 @@ function fichaColaborador(id) {
       render(); fichaColaborador(c.id);
     }
     else if (a === 'asignar') { closeDrawer(); S.asignarCol = c.id; S.view = 'asignar'; render(); }
-    else if (a === 'validar') { closeDrawer(); S.view = 'validar'; render(); }
+    else if (a === 'validar') { closeDrawer(); S.validarAbierto = c.id; S.view = 'validar'; render(); }
     else if (a === 'ascender') modalAscender(c.id);
     else if (a === 'baja') darDeBaja(c.id);
   });
@@ -3872,7 +3896,7 @@ function modalNuevoColaborador() {
     }
 
     S.colaboradores.unshift({
-      id: nuevoId('C-'), nombre, correo, cargo, area, manager, ingreso, registradoPor: S.user.nombre,
+      id: nuevoId('C-'), nombre, correo, cargo, area, manager, ingreso, registradoPor: S.user.nombre, fechaRegistro: HOY,
       estadoAlta:'pendiente_validacion', fase:0, progreso:0, estado:'por_iniciar',
       promedio:0, pendientes:0, ultimaActividad:'Sin actividad', riesgo:'bajo',
       documentosRuta: rutaBaseParaArea(area).map(docId => ({ docId, etapaId: doc(docId).etapaId, estado:'pendiente', confirmado:null, vence:null, origen:'Propuesto' })),
